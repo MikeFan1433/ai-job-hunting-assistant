@@ -15,7 +15,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies without cache to ensure fresh install
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
