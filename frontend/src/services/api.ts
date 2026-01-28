@@ -13,13 +13,17 @@ const getApiBaseUrl = () => {
   // Check if we're in production build or on a remote server
   const hostname = window.location.hostname;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.');
+  
+  // More aggressive production detection - if hostname contains a dot and is not localhost, it's production
   const isProduction = import.meta.env.PROD || 
                        import.meta.env.MODE === 'production' ||
-                       (!isLocalhost && hostname.includes('.'));
+                       (!isLocalhost && hostname.includes('.') && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/));
   
   if (isProduction) {
     // In production, backend serves the frontend, so use same origin
-    return window.location.origin;
+    const origin = window.location.origin;
+    console.log('Production detected, using origin:', origin);
+    return origin;
   }
   
   // 3. Development: If accessing via IP address, use same IP for backend
@@ -35,16 +39,20 @@ const getApiBaseUrl = () => {
 const getCurrentApiBaseUrl = () => getApiBaseUrl();
 
 const api = axios.create({
-  baseURL: getCurrentApiBaseUrl(),
+  baseURL: getCurrentApiBaseUrl(), // Initial value, will be updated in interceptor
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 30000, // 30 second timeout
 });
 
-// Request interceptor
+// Request interceptor - dynamically update baseURL for each request
 api.interceptors.request.use(
   (config) => {
+    // Always use fresh API URL for each request
+    const currentApiUrl = getApiBaseUrl();
+    config.baseURL = currentApiUrl;
+    console.log('API request using URL:', currentApiUrl, config.url);
     return config;
   },
   (error) => {
