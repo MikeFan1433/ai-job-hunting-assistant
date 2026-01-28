@@ -9,29 +9,37 @@ const getApiBaseUrl = () => {
     return import.meta.env.VITE_API_BASE_URL;
   }
   
-  // 2. In production or when not on localhost, use same origin (backend serves frontend)
-  // Check if we're in production build or on a remote server
+  // 2. Check if we're on a production domain (contains dots and not localhost/IP)
   const hostname = window.location.hostname;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.');
+  const origin = window.location.origin;
   
-  // More aggressive production detection - if hostname contains a dot and is not localhost, it's production
-  const isProduction = import.meta.env.PROD || 
-                       import.meta.env.MODE === 'production' ||
-                       (!isLocalhost && hostname.includes('.') && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/));
+  // Check if it's a domain name (not localhost or IP address)
+  const isDomainName = hostname.includes('.') && 
+                       hostname !== 'localhost' && 
+                       hostname !== '127.0.0.1' &&
+                       !hostname.match(/^\d+\.\d+\.\d+\.\d+$/) &&
+                       !hostname.startsWith('192.168.') &&
+                       !hostname.startsWith('10.') &&
+                       !hostname.startsWith('172.');
   
-  if (isProduction) {
-    // In production, backend serves the frontend, so use same origin
-    const origin = window.location.origin;
-    console.log('Production detected, using origin:', origin);
+  // If it's a domain name (like ai-builders.space), always use same origin
+  if (isDomainName) {
+    console.log('Domain detected, using same origin:', origin);
     return origin;
   }
   
-  // 3. Development: If accessing via IP address, use same IP for backend
+  // 3. Check Vite production mode
+  if (import.meta.env.PROD || import.meta.env.MODE === 'production') {
+    console.log('Production mode detected, using same origin:', origin);
+    return origin;
+  }
+  
+  // 4. Development: If accessing via IP address, use same IP for backend
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
     return `http://${hostname}:8000`;
   }
   
-  // 4. Default: localhost for development
+  // 5. Default: localhost for development
   return 'http://localhost:8000';
 };
 
@@ -52,7 +60,15 @@ api.interceptors.request.use(
     // Always use fresh API URL for each request
     const currentApiUrl = getApiBaseUrl();
     config.baseURL = currentApiUrl;
-    console.log('API request using URL:', currentApiUrl, config.url);
+    // Log for debugging (only in development or when needed)
+    if (import.meta.env.DEV || window.location.hostname.includes('ai-builders.space')) {
+      console.log('API request:', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        baseURL: currentApiUrl,
+        fullURL: `${currentApiUrl}${config.url}`
+      });
+    }
     return config;
   },
   (error) => {
