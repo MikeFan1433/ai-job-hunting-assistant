@@ -41,24 +41,42 @@ const getApiBaseUrl = () => {
     return origin;
   }
   
-  // 5. Development: If accessing via IP address, use same IP for backend
+  // 5. Development mode: Use empty string to leverage Vite proxy
+  // Check if we're in development mode (Vite dev server)
+  // In dev mode, Vite proxy will forward /api requests to http://localhost:8000
+  if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
+    // Use empty string to use same origin (Vite dev server)
+    // Vite proxy will handle /api/* requests
+    console.log('🔧 Development mode detected, using Vite proxy (same origin)');
+    return ''; // Empty string means same origin, Vite proxy will handle it
+  }
+  
+  // 6. Development: If accessing via IP address, use same IP for backend
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
     const devUrl = `http://${hostname}:8000`;
     console.log('🔧 Development IP detected, using:', devUrl);
     return devUrl;
   }
   
-  // 6. Default: localhost for development
+  // 7. Default: localhost for development
   const localhostUrl = 'http://localhost:8000';
   console.log('🔧 Localhost development, using:', localhostUrl);
   return localhostUrl;
 };
 
 // Get API base URL - call function each time to ensure fresh value
-const getCurrentApiBaseUrl = () => getApiBaseUrl();
+// Note: getCurrentApiBaseUrl is no longer needed, using getApiBaseUrl() directly
+
+// Get initial API base URL
+const getInitialApiBaseUrl = () => {
+  const url = getApiBaseUrl();
+  // If empty (dev mode), use window.location.origin so axios uses same origin
+  // Vite proxy will handle /api/* requests
+  return url || window.location.origin;
+};
 
 const api = axios.create({
-  baseURL: getCurrentApiBaseUrl(), // Initial value, will be updated in interceptor
+  baseURL: getInitialApiBaseUrl(), // Initial value, will be updated in interceptor
   headers: {
     'Content-Type': 'application/json',
   },
@@ -70,14 +88,16 @@ api.interceptors.request.use(
   (config: any) => {
     // Always use fresh API URL for each request
     const currentApiUrl = getApiBaseUrl();
-    config.baseURL = currentApiUrl;
+    // If empty (dev mode), use window.location.origin so axios uses same origin
+    // Vite proxy will handle /api/* requests
+    config.baseURL = currentApiUrl || window.location.origin;
     // Log for debugging (only in development or when needed)
     if (import.meta.env.DEV || window.location.hostname.includes('ai-builders.space')) {
       console.log('API request:', {
         method: config.method?.toUpperCase(),
         url: config.url,
-        baseURL: currentApiUrl,
-        fullURL: `${currentApiUrl}${config.url}`
+        baseURL: currentApiUrl || '(using Vite proxy)',
+        fullURL: `${config.baseURL}${config.url}`
       });
     }
     return config;
@@ -151,13 +171,14 @@ export const healthAPI = {
     try {
       // Get fresh API URL each time
       const apiUrl = getApiBaseUrl();
-      const healthUrl = `${apiUrl}/api/v1/health`;
-      console.log('🔍 Health check - API URL:', apiUrl);
-      console.log('🔍 Health check - Full URL:', healthUrl);
+      // If apiUrl is empty (dev mode with proxy), use relative path
+      const healthPath = apiUrl ? `${apiUrl}/api/v1/health` : '/api/v1/health';
+      console.log('🔍 Health check - API URL:', apiUrl || '(using Vite proxy)');
+      console.log('🔍 Health check - Full URL:', healthPath);
       
       // Create a fresh axios instance with the current API URL
       const healthCheckClient = axios.create({
-        baseURL: apiUrl,
+        baseURL: apiUrl || window.location.origin, // Use origin if empty (for proxy)
         timeout: 15000, // 15 second timeout (increased)
         headers: {
           'Content-Type': 'application/json',
@@ -211,8 +232,25 @@ export const workflowAPI = {
   },
 
   getProgress: async (workflow_id: string) => {
-    const response = await api.get(`/api/v1/workflow/progress/${workflow_id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/api/v1/workflow/progress/${workflow_id}`);
+      return response.data;
+    } catch (error: any) {
+      // Handle 404 specifically - workflow might not be created yet
+      if (error.status === 404) {
+        console.warn('Workflow not found, might be initializing:', workflow_id);
+        // Return a pending state instead of throwing
+        return {
+          status: 'running',
+          current_step: 'agent1',
+          progress: 0,
+          message: 'Workflow is initializing...',
+          results: {},
+          error: null,
+        };
+      }
+      throw error;
+    }
   },
 
   getResult: async (workflow_id: string) => {
@@ -226,6 +264,8 @@ export const workflowAPI = {
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     let sseFailed = false;
     let isClosed = false;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 5; // Allow some 404s during initialization
 
     const close = () => {
       isClosed = true;
@@ -248,14 +288,28 @@ export const workflowAPI = {
         
         try {
           const data = await workflowAPI.getProgress(workflow_id);
+          consecutiveErrors = 0; // Reset on success
           onUpdate(data);
           
           if (data.status === 'completed' || data.status === 'failed') {
             close();
           }
-        } catch (error) {
+        } catch (error: any) {
+          consecutiveErrors++;
           console.error('Polling error:', error);
-          if (onError) {
+          
+          // If workflow not found and we've tried multiple times, show error
+          if (error.status === 404 && consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            console.error('Workflow not found after multiple attempts:', workflow_id);
+            if (onError) {
+              onError(new Error('Workflow not found. Please start again.'));
+            }
+            close();
+            return;
+          }
+          
+          // For other errors or initial 404s, just log and continue
+          if (error.status !== 404 && onError) {
             onError(error as Error);
           }
         }

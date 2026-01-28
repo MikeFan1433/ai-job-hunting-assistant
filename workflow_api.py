@@ -169,7 +169,16 @@ async def start_workflow(request: WorkflowStartRequest, background_tasks: Backgr
 async def get_workflow_progress(workflow_id: str) -> Dict:
     """Get current workflow progress."""
     if workflow_id not in workflow_state:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+        # Return a pending state instead of 404 to handle initialization delay
+        # This prevents frontend from showing errors during workflow startup
+        return {
+            "status": "running",
+            "current_step": "agent1",
+            "progress": 0,
+            "message": "Workflow is initializing...",
+            "results": {},
+            "error": None
+        }
     
     return workflow_state[workflow_id]
 
@@ -180,6 +189,28 @@ async def stream_workflow_progress(workflow_id: str):
     Stream workflow progress using Server-Sent Events (SSE).
     """
     async def event_generator():
+        # Wait for workflow to be created (max 10 seconds)
+        max_wait = 10
+        waited = 0
+        while workflow_id not in workflow_state and waited < max_wait:
+            await asyncio.sleep(0.5)
+            waited += 0.5
+        
+        # If still not found, send initializing state
+        if workflow_id not in workflow_state:
+            initializing_state = {
+                "status": "running",
+                "current_step": "agent1",
+                "progress": 0,
+                "message": "Workflow is initializing...",
+                "results": {},
+                "error": None
+            }
+            yield f"data: {json.dumps(initializing_state)}\n\n"
+            # Wait a bit more for workflow to start
+            await asyncio.sleep(2)
+        
+        # Now stream actual progress
         while workflow_id in workflow_state:
             state = workflow_state[workflow_id]
             
