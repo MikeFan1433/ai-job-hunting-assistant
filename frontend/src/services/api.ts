@@ -97,7 +97,7 @@ export const healthAPI = {
       });
       
       const response = await healthCheckClient.get('/api/v1/health');
-      const isHealthy = response.status === 200 && response.data?.status === 'healthy';
+      const isHealthy = response.status === 200 && (response.data?.status === 'healthy' || response.data?.status === 'healthy');
       console.log('Health check result:', isHealthy, response.data);
       return isHealthy;
     } catch (error: any) {
@@ -233,13 +233,6 @@ export const workflowAPI = {
     setTimeout(() => {
       if (!sseFailed && !isClosed && !pollInterval) {
         console.log('Starting polling as backup to SSE');
-        startPolling();
-      }
-    }, 3000);
-
-    // If SSE fails immediately, start polling
-    setTimeout(() => {
-      if (sseFailed && !pollInterval && !isClosed) {
         startPolling();
       }
     }, 3000);
