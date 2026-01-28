@@ -4,15 +4,22 @@ import axios from 'axios';
 // Auto-detect API base URL based on current hostname
 // Priority: VITE_API_BASE_URL env var > same origin > localhost
 const getApiBaseUrl = () => {
-  // 1. Check environment variable (for production deployment)
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-  
-  // 2. Check if we're on a production domain (contains dots and not localhost/IP)
   const hostname = window.location.hostname;
   const origin = window.location.origin;
   
+  // 1. Check environment variable (for production deployment)
+  if (import.meta.env.VITE_API_BASE_URL) {
+    console.log('Using VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // 2. CRITICAL: If hostname contains 'ai-builders.space', ALWAYS use same origin
+  if (hostname.includes('ai-builders.space')) {
+    console.log('✅ ai-builders.space detected, using same origin:', origin);
+    return origin;
+  }
+  
+  // 3. Check if we're on a production domain (contains dots and not localhost/IP)
   // Check if it's a domain name (not localhost or IP address)
   const isDomainName = hostname.includes('.') && 
                        hostname !== 'localhost' && 
@@ -22,25 +29,29 @@ const getApiBaseUrl = () => {
                        !hostname.startsWith('10.') &&
                        !hostname.startsWith('172.');
   
-  // If it's a domain name (like ai-builders.space), always use same origin
+  // If it's a domain name, always use same origin
   if (isDomainName) {
-    console.log('Domain detected, using same origin:', origin);
+    console.log('✅ Domain detected, using same origin:', origin);
     return origin;
   }
   
-  // 3. Check Vite production mode
+  // 4. Check Vite production mode
   if (import.meta.env.PROD || import.meta.env.MODE === 'production') {
-    console.log('Production mode detected, using same origin:', origin);
+    console.log('✅ Production mode detected, using same origin:', origin);
     return origin;
   }
   
-  // 4. Development: If accessing via IP address, use same IP for backend
+  // 5. Development: If accessing via IP address, use same IP for backend
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:8000`;
+    const devUrl = `http://${hostname}:8000`;
+    console.log('🔧 Development IP detected, using:', devUrl);
+    return devUrl;
   }
   
-  // 5. Default: localhost for development
-  return 'http://localhost:8000';
+  // 6. Default: localhost for development
+  const localhostUrl = 'http://localhost:8000';
+  console.log('🔧 Localhost development, using:', localhostUrl);
+  return localhostUrl;
 };
 
 // Get API base URL - call function each time to ensure fresh value
@@ -56,7 +67,7 @@ const api = axios.create({
 
 // Request interceptor - dynamically update baseURL for each request
 api.interceptors.request.use(
-  (config) => {
+  (config: any) => {
     // Always use fresh API URL for each request
     const currentApiUrl = getApiBaseUrl();
     config.baseURL = currentApiUrl;
@@ -71,15 +82,15 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
+  (error: any) => {
     return Promise.reject(error);
   }
 );
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response: any) => response,
+  (error: any) => {
     if (error.response) {
       // Server responded with error
       return Promise.reject({
@@ -109,28 +120,38 @@ export const healthAPI = {
     try {
       // Get fresh API URL each time
       const apiUrl = getApiBaseUrl();
-      console.log('Health check using URL:', apiUrl);
+      const healthUrl = `${apiUrl}/api/v1/health`;
+      console.log('🔍 Health check - API URL:', apiUrl);
+      console.log('🔍 Health check - Full URL:', healthUrl);
       
       // Create a fresh axios instance with the current API URL
       const healthCheckClient = axios.create({
         baseURL: apiUrl,
-        timeout: 10000, // 10 second timeout
+        timeout: 15000, // 15 second timeout (increased)
         headers: {
           'Content-Type': 'application/json',
         },
       });
       
       const response = await healthCheckClient.get('/api/v1/health');
-      const isHealthy = response.status === 200 && (response.data?.status === 'healthy' || response.data?.status === 'healthy');
-      console.log('Health check result:', isHealthy, response.data);
+      const isHealthy = response.status === 200 && response.data?.status === 'healthy';
+      console.log('✅ Health check result:', isHealthy ? 'HEALTHY' : 'UNHEALTHY', response.data);
       return isHealthy;
     } catch (error: any) {
-      console.error('Health check failed:', error);
+      console.error('❌ Health check failed:', error);
       if (error.config) {
-        console.error('Health check attempted URL:', error.config.baseURL || error.config.url);
+        console.error('❌ Health check attempted URL:', error.config.baseURL || error.config.url);
+        console.error('❌ Full attempted URL:', `${error.config.baseURL || ''}${error.config.url || ''}`);
       }
       if (error.response) {
-        console.error('Health check response status:', error.response.status);
+        console.error('❌ Health check response status:', error.response.status);
+        console.error('❌ Health check response data:', error.response.data);
+      }
+      if (error.request) {
+        console.error('❌ Health check - No response received. Request details:', error.request);
+      }
+      if (error.message) {
+        console.error('❌ Health check error message:', error.message);
       }
       return false;
     }
