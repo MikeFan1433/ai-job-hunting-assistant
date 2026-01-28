@@ -12,9 +12,10 @@ const getApiBaseUrl = () => {
   // 2. In production or when not on localhost, use same origin (backend serves frontend)
   // Check if we're in production build or on a remote server
   const hostname = window.location.hostname;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.');
   const isProduction = import.meta.env.PROD || 
                        import.meta.env.MODE === 'production' ||
-                       (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.startsWith('192.168.'));
+                       (!isLocalhost && hostname.includes('.'));
   
   if (isProduction) {
     // In production, backend serves the frontend, so use same origin
