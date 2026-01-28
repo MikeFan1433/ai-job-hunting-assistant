@@ -121,11 +121,17 @@ class ExportRequest(BaseModel):
 async def start_workflow(request: WorkflowStartRequest, background_tasks: BackgroundTasks) -> Dict:
     """
     Start the complete workflow: Agent 1 → 2 → 3 → 4.
-    Returns workflow ID for progress tracking.
+    Returns workflow ID for progress tracking immediately.
     Executes in background - use progress endpoint to track.
+    
+    This endpoint is designed to return immediately to avoid gateway timeouts.
     """
+    import asyncio
+    
+    # Generate workflow ID
     workflow_id = f"workflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    # Initialize workflow state immediately (synchronous, fast operation)
     workflow_state[workflow_id] = {
         "status": "running",
         "current_step": "agent1",
@@ -135,15 +141,23 @@ async def start_workflow(request: WorkflowStartRequest, background_tasks: Backgr
         "error": None
     }
     
-    # Start background execution immediately
-    background_tasks.add_task(
-        execute_workflow_async,
-        workflow_id,
-        request.jd_text,
-        request.resume_text,
-        request.projects_text
-    )
+    # Schedule background execution using asyncio.create_task for true async
+    # This ensures the endpoint returns immediately without waiting
+    async def schedule_workflow():
+        # Small delay to ensure response is sent first
+        await asyncio.sleep(0.1)
+        await execute_workflow_async(
+            workflow_id,
+            request.jd_text,
+            request.resume_text,
+            request.projects_text
+        )
     
+    # Use asyncio.create_task for true async execution
+    # This is faster than BackgroundTasks for immediate return
+    asyncio.create_task(schedule_workflow())
+    
+    # Return immediately - don't wait for any initialization
     return {
         "status": "started",
         "workflow_id": workflow_id,
