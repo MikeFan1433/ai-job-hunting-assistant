@@ -593,38 +593,6 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 
-# Mount static files (HTML, CSS, JS)
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-frontend_dist_dir = os.path.join(os.path.dirname(__file__), "frontend", "dist")
-
-# Serve frontend build files if they exist (production)
-if os.path.exists(frontend_dist_dir):
-    # Serve static assets
-    assets_dir = os.path.join(frontend_dist_dir, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-    
-    # Serve frontend index.html for all non-API routes
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        """Serve frontend app for all non-API routes."""
-        # Don't serve frontend for API routes
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="Not found")
-        
-        # Don't serve frontend for asset routes (already handled by mount)
-        if full_path.startswith("assets/"):
-            raise HTTPException(status_code=404, detail="Not found")
-        
-        index_file = os.path.join(frontend_dist_dir, "index.html")
-        if os.path.exists(index_file):
-            from fastapi.responses import FileResponse
-            return FileResponse(index_file)
-        raise HTTPException(status_code=404, detail="Frontend not found")
-elif os.path.exists(static_dir):
-    # Fallback to old static directory
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
 @app.get("/")
 async def root():
     """Root endpoint - serve the main HTML page."""
@@ -649,3 +617,37 @@ async def root():
             "interview": "/api/v1/interview/prepare"
         }
     }
+
+
+# Mount static files (HTML, CSS, JS) - MUST be after all API routes
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+frontend_dist_dir = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+
+# Serve frontend build files if they exist (production)
+if os.path.exists(frontend_dist_dir):
+    # Serve static assets
+    assets_dir = os.path.join(frontend_dist_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    
+    # Serve frontend index.html for all non-API routes
+    # IMPORTANT: This must be the LAST route registered to avoid conflicts with API routes
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve frontend app for all non-API routes."""
+        # Don't serve frontend for API routes (should not reach here if API routes are registered first)
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        # Don't serve frontend for asset routes (already handled by mount)
+        if full_path.startswith("assets/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        index_file = os.path.join(frontend_dist_dir, "index.html")
+        if os.path.exists(index_file):
+            from fastapi.responses import FileResponse
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend not found")
+elif os.path.exists(static_dir):
+    # Fallback to old static directory
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
