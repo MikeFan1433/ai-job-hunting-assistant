@@ -9,14 +9,19 @@ const getApiBaseUrl = () => {
     return import.meta.env.VITE_API_BASE_URL;
   }
   
-  // 2. In production, use same origin (backend serves frontend)
-  if (import.meta.env.PROD) {
+  // 2. In production or when not on localhost, use same origin (backend serves frontend)
+  // Check if we're in production build or on a remote server
+  const hostname = window.location.hostname;
+  const isProduction = import.meta.env.PROD || 
+                       import.meta.env.MODE === 'production' ||
+                       (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.startsWith('192.168.'));
+  
+  if (isProduction) {
     // In production, backend serves the frontend, so use same origin
     return window.location.origin;
   }
   
   // 3. Development: If accessing via IP address, use same IP for backend
-  const hostname = window.location.hostname;
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
     return `http://${hostname}:8000`;
   }
