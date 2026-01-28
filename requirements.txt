@@ -1,0 +1,13 @@
+openai
+fastapi
+uvicorn[standard]
+gunicorn
+python-dotenv
+pydantic
+httpx
+streamlit
+faiss-cpu
+numpy
+tiktoken
+reportlab
+python-docx

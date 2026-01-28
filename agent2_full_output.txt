@@ -1,0 +1,33 @@
+================================================================================
+Agent 2: Full Analysis - Complete Output
+================================================================================
+Analysis Date: 2026-01-20 21:32:13
+
+📋 Input Summary:
+  - JD: Senior Manager, AI Business Value Creation at BMO InvestorLine
+  - Location: Toronto
+  - Resume: Boyang (Mike) Fan - Data Scientist/Analyst
+  - Project Materials: Wealth ChatBot Use Case
+
+🚀 Starting comprehensive analysis...
+================================================================================
+
+🔍 Searching for information about BMO Financial Group...
+🤖 Running Agent 2 analysis...
+✅ Full results saved to: agent2_full_analysis_output.json
+
+❌ Error occurred:
+Failed to parse analysis result: Expecting ',' delimiter: line 351 column 6 (char 20088)
+
+Raw response (first 1000 chars):
+{
+    "ideal_candidate_profile": {
+        "overall_industry_experience": {
+            "required_years": "Minimum 5 years relevant experience",
+            "industry_verticals": ["Financial services", "Wealth management", "Banking", "Investment brokerage"],
+            "company_types": ["Large banks", "Wealth management firms", "Financial institutions", "Scale-ups in fintech"],
+            "description": "Deep experience in financial services, particularly wealth management or brokerage like BMO InvestorLine. Proven track record in AI applications within banking, with exposure to Canadian regulatory environment (OSFI, CIRO). Experience at enterprise-scale companies like BMO, emphasizing cross-functional program management in regulated settings."
+        },
+        "business_domain_understanding": {
+            "business_acumen_level": "Expert in connecting AI to revenue growth, customer experience, and operational efficiency in financial services",
+            "domain_knowledge_requir

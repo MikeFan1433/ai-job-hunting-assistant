@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+frontend/dist/
+*.tar.gz
+*.zip
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Data (exclude large files and outputs)
+data/vector_db/
+data/outputs/
+data/resumes/*.pdf
+data/resumes/*.docx
+data/projects/*.pdf
+data/projects/*.docx
+
+# Test outputs
+test_*.py
+*_test.py
+*.pyc
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Deployment
+deployment-*.tar.gz
+*.tar.gz
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

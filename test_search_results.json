@@ -1,0 +1,188 @@
+{
+  "test1": {
+    "search_summary": "Searched for: Find information about AI program management methodologies used in financial services and banking. Keywords: AI program management, financial services, banking, agile methodology",
+    "total_results": 10,
+    "results": [
+      {
+        "title": "Agile 3.0: Reimagining Product Management for AI in Financial ...",
+        "url": "https://www.linkedin.com/pulse/agile-30-reimagining-product-management-ai-financial-services-cd9xc",
+        "domain": "linkedin.com",
+        "snippet": "",
+        "relevance_score": 0.85,
+        "category": "methodology"
+      },
+      {
+        "title": "How Artificial Intelligence is Transforming the Financial Services ...",
+        "url": "https://www.deloitte.com/ng/en/services/consulting-risk/services/how-artificial-intelligence-is-transforming-the-financial-services-industry.html",
+        "domain": "deloitte.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "general"
+      },
+      {
+        "title": "Artificial Intelligence and Machine Learning in Financial Services",
+        "url": "https://www.congress.gov/crs-product/R47997",
+        "domain": "congress.gov",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "general"
+      },
+      {
+        "title": "AI Financial Management: A 2025 Guide for Finance Teams",
+        "url": "https://www.finoptimal.com/resources/ai-driven-financial-management",
+        "domain": "finoptimal.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "general"
+      },
+      {
+        "title": "[PDF] Artificial Intelligence in Financial Services | Treasury.gov",
+        "url": "https://home.treasury.gov/system/files/136/Artificial-Intelligence-in-Financial-Services.pdf",
+        "domain": "home.treasury.gov",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "general"
+      },
+      {
+        "title": "AI in banking",
+        "url": "https://www.ibm.com/think/topics/ai-in-banking",
+        "domain": "ibm.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "general"
+      },
+      {
+        "title": "How Technology and Agile Are Reshaping Customer Experience in ...",
+        "url": "https://www.oldnational.com/resources/insights/how-technology-and-agile-are-reshaping-customer-experience-in-financial-services/",
+        "domain": "oldnational.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "technology"
+      },
+      {
+        "title": "Best Practices and Key Strategies for Digital Banking Projects",
+        "url": "https://staragile.com/blog/pmp-experts-guide-digital-banking-projects-in-the-us",
+        "domain": "staragile.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "methodology"
+      },
+      {
+        "title": "Accelerate your AI project with an agile approach - IBM",
+        "url": "https://www.ibm.com/think/insights/accelerate-your-ai-project-with-an-agile-approach",
+        "domain": "ibm.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "methodology"
+      },
+      {
+        "title": "How artificial intelligence is reshaping the financial services industry",
+        "url": "https://www.ey.com/en_gr/insights/financial-services/how-artificial-intelligence-is-reshaping-the-financial-services-industry",
+        "domain": "ey.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "technology"
+      }
+    ],
+    "consolidated_content": "=== Consolidated Search Results ===\n\n\n## METHODOLOGY\n\n1. Agile 3.0: Reimagining Product Management for AI in Financial ...\n   Source: linkedin.com\n   \n   URL: https://www.linkedin.com/pulse/agile-30-reimagining-product-management-ai-financial-services-cd9xc\n\n2. Best Practices and Key Strategies for Digital Banking Projects\n   Source: staragile.com\n   \n   URL: https://staragile.com/blog/pmp-experts-guide-digital-banking-projects-in-the-us\n\n3. Accelerate your AI project with an agile approach - IBM\n   Source: ibm.com\n   \n   URL: https://www.ibm.com/think/insights/accelerate-your-ai-project-with-an-agile-approach\n\n\n## GENERAL\n\n1. How Artificial Intelligence is Transforming the Financial Services ...\n   Source: deloitte.com\n   \n   URL: https://www.deloitte.com/ng/en/services/consulting-risk/services/how-artificial-intelligence-is-transforming-the-financial-services-industry.html\n\n2. Artificial Intelligence and Machine Learning in Financial Services\n   Source: congress.gov\n   \n   URL: https://www.congress.gov/crs-product/R47997\n\n3. AI Financial Management: A 2025 Guide for Finance Teams\n   Source: finoptimal.com\n   \n   URL: https://www.finoptimal.com/resources/ai-driven-financial-management\n\n4. [PDF] Artificial Intelligence in Financial Services | Treasury.gov\n   Source: home.treasury.gov\n   \n   URL: https://home.treasury.gov/system/files/136/Artificial-Intelligence-in-Financial-Services.pdf\n\n5. AI in banking\n   Source: ibm.com\n   \n   URL: https://www.ibm.com/think/topics/ai-in-banking\n\n\n## TECHNOLOGY\n\n1. How Technology and Agile Are Reshaping Customer Experience in ...\n   Source: oldnational.com\n   \n   URL: https://www.oldnational.com/resources/insights/how-technology-and-agile-are-reshaping-customer-experience-in-financial-services/\n\n2. How artificial intelligence is reshaping the financial services industry\n   Source: ey.com\n   \n   URL: https://www.ey.com/en_gr/insights/financial-services/how-artificial-intelligence-is-reshaping-the-financial-services-industry\n\n\n=== Summary ===\nTotal sources: 10\nCategories: methodology, general, technology\n",
+    "key_insights": [
+      "Search completed. Review results for details."
+    ],
+    "sources": [
+      "https://www.linkedin.com/pulse/agile-30-reimagining-product-management-ai-financial-services-cd9xc",
+      "https://www.deloitte.com/ng/en/services/consulting-risk/services/how-artificial-intelligence-is-transforming-the-financial-services-industry.html",
+      "https://www.congress.gov/crs-product/R47997",
+      "https://www.finoptimal.com/resources/ai-driven-financial-management",
+      "https://home.treasury.gov/system/files/136/Artificial-Intelligence-in-Financial-Services.pdf",
+      "https://www.ibm.com/think/topics/ai-in-banking",
+      "https://www.oldnational.com/resources/insights/how-technology-and-agile-are-reshaping-customer-experience-in-financial-services/",
+      "https://staragile.com/blog/pmp-experts-guide-digital-banking-projects-in-the-us",
+      "https://www.ibm.com/think/insights/accelerate-your-ai-project-with-an-agile-approach",
+      "https://www.ey.com/en_gr/insights/financial-services/how-artificial-intelligence-is-reshaping-the-financial-services-industry"
+    ]
+  },
+  "test2": {
+    "search_summary": "Searched for: Find best practices and methodologies for RAG (Retrieval Augmented Generation) system development. Keywords: RAG, retrieval augmented generation, vector database, embedding",
+    "total_results": 8,
+    "results": [
+      {
+        "title": "Documentation best practices for RAG applications",
+        "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/writing-best-practices-rag/best-practices.html",
+        "domain": "docs.aws.amazon.com",
+        "snippet": "",
+        "relevance_score": 0.75,
+        "category": "methodology"
+      },
+      {
+        "title": "Chapter 5: Best Practices for RAG | by Marc Haraoui - Medium",
+        "url": "https://medium.com/@marcharaoui/chapter-5-best-practices-for-rag-7770fce8ac81",
+        "domain": "medium.com",
+        "snippet": "",
+        "relevance_score": 0.65,
+        "category": "methodology"
+      },
+      {
+        "title": "Best Practices for Building Robust RAG Systems - DEV Community",
+        "url": "https://dev.to/satyam_chourasiya_99ea2e4/mastering-retrieval-augmented-generation-best-practices-for-building-robust-rag-systems-p9a",
+        "domain": "dev.to",
+        "snippet": "",
+        "relevance_score": 0.65,
+        "category": "methodology"
+      },
+      {
+        "title": "Retrieval Augmented Generation (RAG) and Vector Databases",
+        "url": "https://github.com/microsoft/generative-ai-for-beginners/blob/main/15-rag-and-vector-databases/README.md?WT.mc_id=academic-105485-koreyst",
+        "domain": "github.com",
+        "snippet": "",
+        "relevance_score": 0.65,
+        "category": "general"
+      },
+      {
+        "title": "Introduction to RAG (Retrieval Augmented Generation) and Vector ...",
+        "url": "https://medium.com/@sachinsoni600517/introduction-to-rag-retrieval-augmented-generation-and-vector-database-b593e8eb6a94",
+        "domain": "medium.com",
+        "snippet": "",
+        "relevance_score": 0.65,
+        "category": "general"
+      },
+      {
+        "title": "Vector Databases: A Beginner's Guide! | by Pavan Belagatti - Medium",
+        "url": "https://medium.com/data-and-beyond/vector-databases-a-beginners-guide-b050cbbe9ca0",
+        "domain": "medium.com",
+        "snippet": "",
+        "relevance_score": 0.65,
+        "category": "general"
+      },
+      {
+        "title": "[PDF] Searching for Best Practices in Retrieval-Augmented Generation",
+        "url": "https://aclanthology.org/2024.emnlp-main.981.pdf",
+        "domain": "aclanthology.org",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "methodology"
+      },
+      {
+        "title": "Best Practices in Retrieval Augmented Generation - Gradient Flow",
+        "url": "https://gradientflow.substack.com/p/best-practices-in-retrieval-augmented",
+        "domain": "gradientflow.substack.com",
+        "snippet": "",
+        "relevance_score": 0.5,
+        "category": "methodology"
+      }
+    ],
+    "consolidated_content": "=== Consolidated Search Results ===\n\n\n## METHODOLOGY\n\n1. Documentation best practices for RAG applications\n   Source: docs.aws.amazon.com\n   \n   URL: https://docs.aws.amazon.com/prescriptive-guidance/latest/writing-best-practices-rag/best-practices.html\n\n2. Chapter 5: Best Practices for RAG | by Marc Haraoui - Medium\n   Source: medium.com\n   \n   URL: https://medium.com/@marcharaoui/chapter-5-best-practices-for-rag-7770fce8ac81\n\n3. Best Practices for Building Robust RAG Systems - DEV Community\n   Source: dev.to\n   \n   URL: https://dev.to/satyam_chourasiya_99ea2e4/mastering-retrieval-augmented-generation-best-practices-for-building-robust-rag-systems-p9a\n\n4. [PDF] Searching for Best Practices in Retrieval-Augmented Generation\n   Source: aclanthology.org\n   \n   URL: https://aclanthology.org/2024.emnlp-main.981.pdf\n\n5. Best Practices in Retrieval Augmented Generation - Gradient Flow\n   Source: gradientflow.substack.com\n   \n   URL: https://gradientflow.substack.com/p/best-practices-in-retrieval-augmented\n\n\n## GENERAL\n\n1. Retrieval Augmented Generation (RAG) and Vector Databases\n   Source: github.com\n   \n   URL: https://github.com/microsoft/generative-ai-for-beginners/blob/main/15-rag-and-vector-databases/README.md?WT.mc_id=academic-105485-koreyst\n\n2. Introduction to RAG (Retrieval Augmented Generation) and Vector ...\n   Source: medium.com\n   \n   URL: https://medium.com/@sachinsoni600517/introduction-to-rag-retrieval-augmented-generation-and-vector-database-b593e8eb6a94\n\n3. Vector Databases: A Beginner's Guide! | by Pavan Belagatti - Medium\n   Source: medium.com\n   \n   URL: https://medium.com/data-and-beyond/vector-databases-a-beginners-guide-b050cbbe9ca0\n\n\n=== Summary ===\nTotal sources: 8\nCategories: methodology, general\n",
+    "key_insights": [
+      "Search completed. Review results for details."
+    ],
+    "sources": [
+      "https://docs.aws.amazon.com/prescriptive-guidance/latest/writing-best-practices-rag/best-practices.html",
+      "https://medium.com/@marcharaoui/chapter-5-best-practices-for-rag-7770fce8ac81",
+      "https://dev.to/satyam_chourasiya_99ea2e4/mastering-retrieval-augmented-generation-best-practices-for-building-robust-rag-systems-p9a",
+      "https://github.com/microsoft/generative-ai-for-beginners/blob/main/15-rag-and-vector-databases/README.md?WT.mc_id=academic-105485-koreyst",
+      "https://medium.com/@sachinsoni600517/introduction-to-rag-retrieval-augmented-generation-and-vector-database-b593e8eb6a94",
+      "https://medium.com/data-and-beyond/vector-databases-a-beginners-guide-b050cbbe9ca0",
+      "https://aclanthology.org/2024.emnlp-main.981.pdf",
+      "https://gradientflow.substack.com/p/best-practices-in-retrieval-augmented"
+    ]
+  }
+}

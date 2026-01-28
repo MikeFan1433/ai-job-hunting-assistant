@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Job Hunting Assistant</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Input Page -->
+        <div id="input-page" class="page active">
+            <div class="container">
+                <div class="header">
+                    <h1>AI Job Hunting Assistant</h1>
+                    <p>Get personalized resume optimization and interview preparation</p>
+                </div>
+
+                <form id="input-form" class="form-container">
+                    <!-- JD Input -->
+                    <div class="input-card">
+                        <label class="input-label">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                <circle cx="12" cy="10" r="3"></circle>
+                            </svg>
+                            Job Description (JD) <span class="required">*</span>
+                        </label>
+                        <textarea id="jd-text" class="textarea" placeholder="Paste the job description here..." rows="8" required></textarea>
+                        <p class="char-count"><span id="jd-count">0</span> characters</p>
+                    </div>
+
+                    <!-- Resume Input -->
+                    <div class="input-card">
+                        <label class="input-label">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            Resume <span class="required">*</span>
+                        </label>
+                        
+                        <!-- PDF Upload Section -->
+                        <div class="upload-section">
+                            <div class="upload-area" id="resume-upload-area">
+                                <input type="file" id="resume-pdf-input" accept=".pdf" style="display: none;">
+                                <div class="upload-content">
+                                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                    <p class="upload-text">点击上传 PDF 简历</p>
+                                    <p class="upload-hint">或拖拽文件到此处</p>
+                                    <p class="upload-file-name" id="resume-file-name" style="display: none;"></p>
+                                </div>
+                            </div>
+                            <div class="upload-actions">
+                                <button type="button" id="resume-upload-btn" class="btn btn-outline btn-sm">
+                                    上传 PDF
+                                </button>
+                                <span class="divider">或</span>
+                                <button type="button" id="resume-text-toggle" class="btn btn-outline btn-sm">
+                                    手动输入文本
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Text Input Section (initially hidden) -->
+                        <div id="resume-text-section" class="text-input-section" style="display: none;">
+                            <textarea id="resume-text" class="textarea" placeholder="Paste your resume here..." rows="12"></textarea>
+                            <p class="char-count"><span id="resume-count">0</span> characters</p>
+                        </div>
+                        
+                        <!-- Loading indicator for PDF upload -->
+                        <div id="resume-upload-loading" class="upload-loading" style="display: none;">
+                            <svg class="spinner-small" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <circle cx="12" cy="12" r="10" stroke-width="4" stroke-dasharray="32" stroke-dashoffset="32">
+                                    <animate attributeName="stroke-dasharray" dur="2s" values="0 32;16 16;0 32;0 32" repeatCount="indefinite"/>
+                                    <animate attributeName="stroke-dashoffset" dur="2s" values="0;-16;-32;-32" repeatCount="indefinite"/>
+                                </circle>
+                            </svg>
+                            <span>正在解析 PDF...</span>
+                        </div>
+                    </div>
+
+                    <!-- Projects Input -->
+                    <div class="input-card">
+                        <label class="input-label">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            Project Materials (Optional)
+                        </label>
+                        <textarea id="projects-text" class="textarea" placeholder="Paste your project materials here (optional)..." rows="10"></textarea>
+                        <p class="char-count"><span id="projects-count">0</span> characters</p>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="error-message" class="error-message" style="display: none;"></div>
+
+                    <!-- Submit Button -->
+                    <div class="button-container">
+                        <button type="submit" id="submit-btn" class="btn btn-primary">
+                            <span>Start Analysis</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Loading Page -->
+        <div id="loading-page" class="page">
+            <div class="container">
+                <div class="loading-card">
+                    <div id="loading-icon" class="loading-icon">
+                        <svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <circle cx="12" cy="12" r="10" stroke-width="4" stroke-dasharray="32" stroke-dashoffset="32">
+                                <animate attributeName="stroke-dasharray" dur="2s" values="0 32;16 16;0 32;0 32" repeatCount="indefinite"/>
+                                <animate attributeName="stroke-dashoffset" dur="2s" values="0;-16;-32;-32" repeatCount="indefinite"/>
+                            </circle>
+                        </svg>
+                    </div>
+                    <h1 id="loading-title">Processing Your Request...</h1>
+                    <p id="loading-step" class="loading-step"></p>
+                    <div id="progress-bar" class="progress-bar">
+                        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <p id="loading-message" class="loading-message"></p>
+                    <div id="loading-error" class="error-message" style="display: none;"></div>
+                    <button id="retry-btn" class="btn btn-primary" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        Retry
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="page">
+            <div class="dashboard-container">
+                <header class="dashboard-header">
+                    <h1>Dashboard</h1>
+                    <div class="header-actions">
+                        <button id="export-pdf-btn" class="btn btn-outline">Export PDF</button>
+                        <button id="export-docx-btn" class="btn btn-outline">Export DOCX</button>
+                        <button id="interview-btn" class="btn btn-primary" style="display: none;">
+                            Interview Prep
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="dashboard-content">
+                    <aside class="sidebar">
+                        <nav class="tabs-nav">
+                            <button class="tab-btn active" data-tab="match">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"></path><path d="M18 7l-5-5-5 5"></path></svg>
+                                Match Analysis
+                            </button>
+                            <button class="tab-btn" data-tab="profile">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                Candidate Profile
+                            </button>
+                            <button class="tab-btn" data-tab="scenario">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                                Work Scenario
+                            </button>
+                            <button class="tab-btn" data-tab="projects">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                                Projects
+                            </button>
+                            <button class="tab-btn" data-tab="resume">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                Resume Optimization
+                            </button>
+                        </nav>
+
+                        <div id="action-panel" class="action-panel" style="display: none;">
+                            <h3>Actions</h3>
+                            <button id="generate-resume-btn" class="btn btn-primary btn-block">Confirm & Generate Resume</button>
+                            <div id="feedback-progress" class="progress-info"></div>
+                        </div>
+                    </aside>
+
+                    <main class="main-content">
+                        <div class="content-card">
+                            <!-- Tab Content will be loaded here -->
+                            <div id="tab-content"></div>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
