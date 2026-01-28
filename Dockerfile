@@ -36,9 +36,9 @@ RUN mkdir -p data/resumes data/projects data/jobs data/outputs data/vector_db
 # Expose port (PORT will be set at runtime by Koyeb)
 EXPOSE 8000
 
-# Health check (uses PORT env var with default fallback)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD sh -c "python -c \"import requests, os; port = os.getenv('PORT', '8000'); requests.get(f'http://localhost:{port}/api/v1/health')\"" || exit 1
+# Health check (uses curl which is already installed, and PORT env var with default fallback)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD sh -c "port=\${PORT:-8000} && curl -f http://localhost:\${port}/api/v1/health || exit 1"
 
 # Start server using PORT environment variable
 # Use shell form (sh -c) to ensure environment variable expansion works correctly
