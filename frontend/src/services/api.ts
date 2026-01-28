@@ -62,7 +62,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 180000, // 3 minutes timeout (180 seconds) - workflow start can take time
 });
 
 // Request interceptor - dynamically update baseURL for each request
@@ -91,6 +91,24 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response: any) => response,
   (error: any) => {
+    // Enhanced error logging
+    console.error('❌ API Error:', {
+      message: error.message,
+      code: error.code,
+      config: {
+        method: error.config?.method?.toUpperCase(),
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: `${error.config?.baseURL || ''}${error.config?.url || ''}`,
+        timeout: error.config?.timeout,
+      },
+      response: error.response ? {
+        status: error.response.status,
+        data: error.response.data,
+      } : null,
+      request: error.request ? 'Request made but no response' : null,
+    });
+    
     if (error.response) {
       // Server responded with error
       return Promise.reject({
@@ -99,16 +117,29 @@ api.interceptors.response.use(
         data: error.response.data,
       });
     } else if (error.request) {
-      // Request made but no response
+      // Request made but no response - could be timeout, network issue, or CORS
+      let errorMessage = 'Network error. Please check your connection.';
+      
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = 'Request timeout. The server is taking too long to respond. Please try again.';
+      } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (error.message?.includes('CORS')) {
+        errorMessage = 'CORS error. Please contact the administrator.';
+      }
+      
       return Promise.reject({
-        message: 'Network error. Please check your connection.',
+        message: errorMessage,
         status: 0,
+        code: error.code,
+        originalError: error.message,
       });
     } else {
       // Something else happened
       return Promise.reject({
         message: error.message || 'An unexpected error occurred',
         status: 0,
+        code: error.code,
       });
     }
   }
@@ -161,8 +192,22 @@ export const healthAPI = {
 // Workflow API
 export const workflowAPI = {
   start: async (inputs: { jd_text: string; resume_text: string; projects_text?: string }) => {
-    const response = await api.post('/api/v1/workflow/start', inputs);
-    return response.data;
+    console.log('🚀 Starting workflow with inputs:', {
+      jd_length: inputs.jd_text.length,
+      resume_length: inputs.resume_text.length,
+      projects_length: inputs.projects_text?.length || 0,
+    });
+    const apiUrl = getApiBaseUrl();
+    console.log('🚀 Workflow start API URL:', `${apiUrl}/api/v1/workflow/start`);
+    
+    try {
+      const response = await api.post('/api/v1/workflow/start', inputs);
+      console.log('✅ Workflow started successfully:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Workflow start failed:', error);
+      throw error;
+    }
   },
 
   getProgress: async (workflow_id: string) => {
