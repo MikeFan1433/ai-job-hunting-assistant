@@ -11,3 +11,4 @@ numpy
 tiktoken
 reportlab
 python-docx
+pdfplumber
