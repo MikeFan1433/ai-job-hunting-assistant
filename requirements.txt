@@ -12,3 +12,4 @@ tiktoken
 reportlab
 python-docx
 pdfplumber
+python-multipart
