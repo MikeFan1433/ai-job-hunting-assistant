@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { workflowAPI, healthAPI } from '../services/api';
-import { FileText, Briefcase, FolderOpen, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { workflowAPI, healthAPI, resumeAPI } from '../services/api';
+import { FileText, Briefcase, FolderOpen, ArrowRight, Loader2, AlertCircle, CheckCircle2, Upload } from 'lucide-react';
 
 export default function InputPage() {
   const navigate = useNavigate();
@@ -11,6 +11,8 @@ export default function InputPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [uploadingPDF, setUploadingPDF] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check backend health on mount
   useEffect(() => {
@@ -74,6 +76,52 @@ export default function InputPage() {
       setError(errorMessage);
       setLoading(false);
     }
+  };
+
+  const handlePDFUpload = async (file: File) => {
+    if (!file.type.includes('pdf')) {
+      setError('Please upload a PDF file');
+      return;
+    }
+
+    setUploadingPDF(true);
+    setError(null);
+
+    try {
+      const result = await resumeAPI.uploadPDF(file);
+      if (result.extracted_text) {
+        setInputs({ resume_text: result.extracted_text });
+        setError(null);
+      } else {
+        setError('Failed to extract text from PDF');
+      }
+    } catch (err: any) {
+      console.error('PDF upload error:', err);
+      setError(err.message || 'Failed to upload PDF. Please try pasting the text instead.');
+    } finally {
+      setUploadingPDF(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handlePDFUpload(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.includes('pdf')) {
+      handlePDFUpload(file);
+    } else {
+      setError('Please drop a PDF file');
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   return (
@@ -140,9 +188,40 @@ export default function InputPage() {
               Resume
               <span className="text-red-500">*</span>
             </label>
+            
+            {/* PDF Upload Section */}
+            <div 
+              className="border-2 border-dashed border-gray-300 rounded-lg p-6 mb-4 text-center cursor-pointer hover:border-primary-500 transition-colors"
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              {uploadingPDF ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary-600" />
+                  <span className="text-gray-600">Uploading and parsing PDF...</span>
+                </div>
+              ) : (
+                <div>
+                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600 mb-1">
+                    Click to upload or drag and drop PDF resume
+                  </p>
+                  <p className="text-xs text-gray-500">or paste text below</p>
+                </div>
+              )}
+            </div>
+
             <textarea
               className="textarea"
-              placeholder="Paste your resume here..."
+              placeholder="Or paste your resume text here..."
               value={inputs.resume_text}
               onChange={(e) => setInputs({ resume_text: e.target.value })}
               rows={12}

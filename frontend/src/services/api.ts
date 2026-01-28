@@ -176,9 +176,11 @@ export const workflowAPI = {
       pollInterval = setInterval(poll, 2000);
     };
 
-    // Try SSE first
+    // Try SSE first - use fresh API URL
     try {
-      eventSource = new EventSource(`${API_BASE_URL}/api/v1/workflow/progress/${workflow_id}/stream`);
+      const apiUrl = getApiBaseUrl();
+      console.log('SSE connection using URL:', apiUrl);
+      eventSource = new EventSource(`${apiUrl}/api/v1/workflow/progress/${workflow_id}/stream`);
       
       eventSource.onopen = () => {
         console.log('SSE connection opened');
@@ -221,8 +223,19 @@ export const workflowAPI = {
       if (onError) {
         onError(new Error('Failed to create SSE connection'));
       }
+      // Immediately start polling as fallback
+      console.log('SSE creation failed, starting polling immediately');
       startPolling();
     }
+    
+    // Also start polling as backup after a short delay
+    // This ensures we get updates even if SSE silently fails
+    setTimeout(() => {
+      if (!sseFailed && !isClosed && !pollInterval) {
+        console.log('Starting polling as backup to SSE');
+        startPolling();
+      }
+    }, 3000);
 
     // If SSE fails immediately, start polling
     setTimeout(() => {
@@ -237,6 +250,19 @@ export const workflowAPI = {
 
 // Resume API
 export const resumeAPI = {
+  uploadPDF: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const apiUrl = getApiBaseUrl();
+    const response = await axios.post(`${apiUrl}/api/v1/upload/resume-pdf`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 30000,
+    });
+    return response.data;
+  },
+
   getRecommendations: async () => {
     const response = await api.get('/api/v1/resume/recommendations');
     return response.data;
