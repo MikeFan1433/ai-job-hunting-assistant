@@ -31,13 +31,15 @@ const getApiBaseUrl = () => {
   return 'http://localhost:8000';
 };
 
-const API_BASE_URL = getApiBaseUrl();
+// Get API base URL - call function each time to ensure fresh value
+const getCurrentApiBaseUrl = () => getApiBaseUrl();
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getCurrentApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout
 });
 
 // Request interceptor
@@ -81,9 +83,31 @@ api.interceptors.response.use(
 export const healthAPI = {
   check: async (): Promise<boolean> => {
     try {
-      const response = await api.get('/api/v1/health', { timeout: 3000 });
-      return response.status === 200;
-    } catch (error) {
+      // Get fresh API URL each time
+      const apiUrl = getApiBaseUrl();
+      console.log('Health check using URL:', apiUrl);
+      
+      // Create a fresh axios instance with the current API URL
+      const healthCheckClient = axios.create({
+        baseURL: apiUrl,
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const response = await healthCheckClient.get('/api/v1/health');
+      const isHealthy = response.status === 200 && response.data?.status === 'healthy';
+      console.log('Health check result:', isHealthy, response.data);
+      return isHealthy;
+    } catch (error: any) {
+      console.error('Health check failed:', error);
+      if (error.config) {
+        console.error('Health check attempted URL:', error.config.baseURL || error.config.url);
+      }
+      if (error.response) {
+        console.error('Health check response status:', error.response.status);
+      }
       return false;
     }
   },
