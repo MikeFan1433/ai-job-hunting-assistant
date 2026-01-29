@@ -9,18 +9,27 @@ export default function LoadingPage() {
   const { workflow, setWorkflow, incrementRetry, retry_count } = useAppStore();
   const [, setPolling] = useState(true); // Used in useEffect and handleRetry
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
+  const [stuckWarning, setStuckWarning] = useState(false);
 
   useEffect(() => {
     if (!workflow.workflow_id) {
+      console.warn('No workflow_id, redirecting to home');
       navigate('/');
       return;
     }
+
+    console.log('LoadingPage: Starting progress tracking for workflow:', workflow.workflow_id);
 
     // Start SSE stream for real-time updates with error handling
     const cleanup = workflowAPI.streamProgress(
       workflow.workflow_id!,
       (data) => {
+        console.log('LoadingPage: Progress update received:', data);
+        setLastUpdateTime(Date.now());
         setConnectionError(null); // Clear error on successful update
+        setStuckWarning(false);
+        
         setWorkflow({
           status: data.status,
           current_step: data.current_step,
@@ -32,6 +41,7 @@ export default function LoadingPage() {
 
         // Navigate to dashboard when completed
         if (data.status === 'completed') {
+          console.log('LoadingPage: Workflow completed, navigating to dashboard');
           setPolling(false);
           setTimeout(() => {
             navigate('/dashboard');
@@ -40,20 +50,34 @@ export default function LoadingPage() {
 
         // Handle failure
         if (data.status === 'failed') {
+          console.error('LoadingPage: Workflow failed:', data.error);
           setPolling(false);
         }
       },
       (error) => {
         // Handle connection errors
-        console.error('Connection error:', error);
+        console.error('LoadingPage: Connection error:', error);
         setConnectionError(error.message);
         // Don't set status to failed, just show warning
         // The polling fallback will continue trying
       }
     );
 
-    return cleanup;
-  }, [workflow.workflow_id, navigate, setWorkflow]);
+    // Check for stuck workflow (no updates for 2 minutes)
+    const stuckCheckInterval = setInterval(() => {
+      const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+      if (timeSinceLastUpdate > 120000 && workflow.status === 'running') {
+        console.warn('LoadingPage: Workflow appears stuck, no updates for', Math.floor(timeSinceLastUpdate / 1000), 'seconds');
+        setStuckWarning(true);
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => {
+      console.log('LoadingPage: Cleaning up progress tracking');
+      cleanup();
+      clearInterval(stuckCheckInterval);
+    };
+  }, [workflow.workflow_id, navigate, setWorkflow, lastUpdateTime, workflow.status]);
 
   const handleRetry = async () => {
     if (retry_count >= 3) {
@@ -148,7 +172,31 @@ export default function LoadingPage() {
           )}
 
           {/* Message */}
-          <p className="text-gray-700 mb-6">{workflow.message}</p>
+          <p className="text-gray-700 mb-6">{workflow.message || 'Processing...'}</p>
+
+          {/* Stuck Warning */}
+          {stuckWarning && workflow.status === 'running' && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 text-left">
+              <p className="text-orange-800 font-semibold mb-2">⚠️ 工作流可能卡住了</p>
+              <p className="text-orange-700 text-sm mb-3">
+                工作流似乎没有更新。这可能是正常的（处理需要时间），但如果等待时间过长，请尝试刷新页面或重新开始。
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700"
+                >
+                  刷新页面
+                </button>
+                <button
+                  onClick={() => navigate('/')}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300"
+                >
+                  重新开始
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Connection Warning - Only show if it's a real error, not SSE fallback */}
           {connectionError && 
@@ -159,6 +207,27 @@ export default function LoadingPage() {
               <p className="text-yellow-800 font-semibold mb-2">⚠️ Connection Warning:</p>
               <p className="text-yellow-700 text-sm">{connectionError}</p>
               <p className="text-yellow-600 text-xs mt-2">Using fallback connection method...</p>
+            </div>
+          )}
+
+          {/* Debug Info (only in development) */}
+          {import.meta.env.DEV && workflow.workflow_id && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6 text-left text-xs">
+              <p className="font-semibold mb-1">Debug Info:</p>
+              <p>Workflow ID: {workflow.workflow_id}</p>
+              <p>Status: {workflow.status}</p>
+              <p>Step: {workflow.current_step}</p>
+              <p>Progress: {workflow.progress}%</p>
+              <p className="mt-2">
+                <a 
+                  href={`http://localhost:8000/api/v1/workflow/progress/${workflow.workflow_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  查看 API 响应 →
+                </a>
+              </p>
             </div>
           )}
 
