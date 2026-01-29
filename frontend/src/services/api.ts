@@ -323,45 +323,17 @@ export const workflowAPI = {
     // Try SSE first - use fresh API URL
     try {
       const apiUrl = getApiBaseUrl();
-      const sseUrl = `${apiUrl}/api/v1/workflow/progress/${workflow_id}/stream`;
-      console.log('SSE connection using URL:', sseUrl);
-      
-      // Create EventSource with error handling
-      eventSource = new EventSource(sseUrl);
-      
-      // Set a timeout for SSE connection (10 seconds)
-      const sseTimeout = setTimeout(() => {
-        if (!sseFailed && eventSource && eventSource.readyState !== EventSource.OPEN) {
-          console.warn('SSE connection timeout, falling back to polling');
-          sseFailed = true;
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (onError) {
-            onError(new Error('SSE connection timeout, using polling instead'));
-          }
-          startPolling();
-        }
-      }, 10000);
+      console.log('SSE connection using URL:', apiUrl);
+      eventSource = new EventSource(`${apiUrl}/api/v1/workflow/progress/${workflow_id}/stream`);
       
       eventSource.onopen = () => {
-        console.log('✅ SSE connection opened successfully');
-        clearTimeout(sseTimeout);
+        console.log('SSE connection opened');
         sseFailed = false;
-        consecutiveErrors = 0; // Reset error count on successful connection
       };
       
       eventSource.onmessage = (event) => {
         try {
-          // Skip comment messages (lines starting with :)
-          if (event.data.startsWith(':')) {
-            console.log('SSE comment:', event.data);
-            return;
-          }
-          
           const data = JSON.parse(event.data);
-          console.log('SSE data received:', data);
           onUpdate(data);
           
           // Close if completed or failed
@@ -369,38 +341,41 @@ export const workflowAPI = {
             close();
           }
         } catch (error) {
-          console.error('Error parsing SSE data:', error, 'Raw data:', event.data);
+          console.error('Error parsing SSE data:', error);
         }
       };
       
-      eventSource.onerror = () => {
-        // Don't log every error - EventSource fires errors frequently
-        // Only log if connection is actually closed
-        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-          console.warn('SSE connection closed');
-          clearTimeout(sseTimeout);
-          
-          if (!sseFailed && !isClosed) {
-            sseFailed = true;
-            // Fallback to polling if SSE fails
-            console.log('SSE connection closed, falling back to polling');
-            if (onError) {
-              onError(new Error('SSE connection closed, using polling instead'));
-            }
-            startPolling();
-          }
-          
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-        } else if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
-          // Still connecting, don't treat as error yet
-          console.log('SSE connecting...');
+      eventSource.onerror = (error) => {
+        // Check connection state
+        const readyState = eventSource?.readyState;
+        console.warn('SSE error:', {
+          readyState,
+          error,
+          message: readyState === EventSource.CLOSED ? 'Connection closed' : 'Connection error'
+        });
+        
+        // Only trigger fallback if connection is actually closed
+        // EventSource.OPEN = 1, EventSource.CONNECTING = 0, EventSource.CLOSED = 2
+        if (readyState === EventSource.CLOSED && !sseFailed && !isClosed) {
+          sseFailed = true;
+          // Fallback to polling if SSE fails
+          console.log('SSE connection closed, falling back to polling (this is normal if proxy doesn\'t support SSE)');
+          // Don't show error for SSE fallback - it's expected behavior
+          // Polling will handle updates silently
+          startPolling();
+        } else if (readyState === EventSource.CONNECTING) {
+          // Still connecting, don't do anything yet
+          console.log('SSE still connecting...');
+        }
+        
+        // Only close if connection is actually closed
+        if (readyState === EventSource.CLOSED && eventSource) {
+          eventSource.close();
+          eventSource = null;
         }
       };
-    } catch (err) {
-      console.error('Failed to create SSE connection:', err);
+    } catch (error) {
+      console.error('Failed to create SSE connection:', error);
       sseFailed = true;
       if (onError) {
         onError(new Error('Failed to create SSE connection'));

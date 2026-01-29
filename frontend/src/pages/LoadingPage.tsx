@@ -150,8 +150,11 @@ export default function LoadingPage() {
           {/* Message */}
           <p className="text-gray-700 mb-6">{workflow.message}</p>
 
-          {/* Connection Warning */}
-          {connectionError && workflow.status === 'running' && (
+          {/* Connection Warning - Only show if it's a real error, not SSE fallback */}
+          {connectionError && 
+           workflow.status === 'running' && 
+           !connectionError.includes('SSE') && 
+           !connectionError.includes('polling') && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-left">
               <p className="text-yellow-800 font-semibold mb-2">⚠️ Connection Warning:</p>
               <p className="text-yellow-700 text-sm">{connectionError}</p>

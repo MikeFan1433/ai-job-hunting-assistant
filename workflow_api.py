@@ -187,63 +187,70 @@ async def get_workflow_progress(workflow_id: str) -> Dict:
 async def stream_workflow_progress(workflow_id: str):
     """
     Stream workflow progress using Server-Sent Events (SSE).
+    Note: Some proxies/gateways may not support SSE, so polling fallback is recommended.
     """
-    from fastapi.responses import StreamingResponse
-    
     async def event_generator():
-        # Send initial connection message
-        yield ": connected\n\n"
-        
-        # Wait for workflow to be created (max 10 seconds)
-        max_wait = 10
-        waited = 0
-        while workflow_id not in workflow_state and waited < max_wait:
-            await asyncio.sleep(0.5)
-            waited += 0.5
-        
-        # If still not found, send initializing state
-        if workflow_id not in workflow_state:
-            initializing_state = {
-                "status": "running",
-                "current_step": "agent1",
-                "progress": 0,
-                "message": "Workflow is initializing...",
-                "results": {},
-                "error": None
+        try:
+            # Send initial connection message
+            yield f": SSE connection established\n\n"
+            
+            # Wait for workflow to be created (max 10 seconds)
+            max_wait = 10
+            waited = 0
+            while workflow_id not in workflow_state and waited < max_wait:
+                await asyncio.sleep(0.5)
+                waited += 0.5
+            
+            # If still not found, send initializing state
+            if workflow_id not in workflow_state:
+                initializing_state = {
+                    "status": "running",
+                    "current_step": "agent1",
+                    "progress": 0,
+                    "message": "Workflow is initializing...",
+                    "results": {},
+                    "error": None
+                }
+                yield f"data: {json.dumps(initializing_state)}\n\n"
+                # Wait a bit more for workflow to start
+                await asyncio.sleep(2)
+            
+            # Now stream actual progress
+            last_state = None
+            while workflow_id in workflow_state:
+                state = workflow_state[workflow_id]
+                
+                # Only send if state changed
+                if state != last_state:
+                    yield f"data: {json.dumps(state)}\n\n"
+                    last_state = state
+                    
+                    # If completed or failed, break
+                    if state["status"] in ["completed", "failed"]:
+                        break
+                
+                await asyncio.sleep(1)  # Update every second
+        except Exception as e:
+            # Send error message before closing
+            error_state = {
+                "status": "failed",
+                "error": f"SSE stream error: {str(e)}",
+                "message": "Connection error occurred"
             }
-            yield f"data: {json.dumps(initializing_state)}\n\n"
-            # Wait a bit more for workflow to start
-            await asyncio.sleep(2)
-        
-        # Now stream actual progress
-        last_status = None
-        while workflow_id in workflow_state:
-            state = workflow_state[workflow_id]
-            
-            # Only send if status changed or it's been 2 seconds
-            if state["status"] != last_status or True:  # Always send updates
-                yield f"data: {json.dumps(state)}\n\n"
-                last_status = state["status"]
-            
-            # If completed or failed, break
-            if state["status"] in ["completed", "failed"]:
-                break
-            
-            await asyncio.sleep(1)  # Update every second
-        
-        # Send final message
-        yield ": stream ended\n\n"
+            yield f"data: {json.dumps(error_state)}\n\n"
     
-    response = StreamingResponse(
+    # Add headers for SSE compatibility
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # Disable buffering in nginx
+    }
+    
+    return StreamingResponse(
         event_generator(), 
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable buffering for nginx
-        }
+        headers=headers
     )
-    return response
 
 
 async def execute_workflow_async(workflow_id: str, jd_text: str, resume_text: str, projects_text: Optional[str]):
