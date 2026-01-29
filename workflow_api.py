@@ -188,7 +188,12 @@ async def stream_workflow_progress(workflow_id: str):
     """
     Stream workflow progress using Server-Sent Events (SSE).
     """
+    from fastapi.responses import StreamingResponse
+    
     async def event_generator():
+        # Send initial connection message
+        yield ": connected\n\n"
+        
         # Wait for workflow to be created (max 10 seconds)
         max_wait = 10
         waited = 0
@@ -211,19 +216,34 @@ async def stream_workflow_progress(workflow_id: str):
             await asyncio.sleep(2)
         
         # Now stream actual progress
+        last_status = None
         while workflow_id in workflow_state:
             state = workflow_state[workflow_id]
             
-            # Send current progress
-            yield f"data: {json.dumps(state)}\n\n"
+            # Only send if status changed or it's been 2 seconds
+            if state["status"] != last_status or True:  # Always send updates
+                yield f"data: {json.dumps(state)}\n\n"
+                last_status = state["status"]
             
             # If completed or failed, break
             if state["status"] in ["completed", "failed"]:
                 break
             
             await asyncio.sleep(1)  # Update every second
+        
+        # Send final message
+        yield ": stream ended\n\n"
     
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    response = StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable buffering for nginx
+        }
+    )
+    return response
 
 
 async def execute_workflow_async(workflow_id: str, jd_text: str, resume_text: str, projects_text: Optional[str]):
