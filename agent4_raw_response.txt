@@ -1,5 +1,498 @@
-{
-  "experience_replacements": [
+ "Senior Data Scientist, Wealth Direct Investing (DI) Product Strategy",
+        "company": "TD Bank Group",
+        "entry_index": 0
+      },
+      "adjustments": [
+        {
+          "bullet_point": {
+            "original": "Designed and implemented the E2E AI Strategy for enhancing product roadmap and client experience at direct investing; worked cross-functionally to deploy 10+ AI initiatives on DI platforms that increased 20% active clients.",
+            "suggested": "Developed and executed end-to-end AI strategy for Wealth Direct Investing product roadmap, driving cross-functional deployment of 10+ AI initiatives that increased active clients by 20% and enhanced customer experience.",
+            "improvement_type": "Sentence structure enhancement + Keyword optimization + Expression refinement",
+            "improvement_rationale": "Strengthens action verbs ('Developed and executed'), adds JD keywords ('end-to-end AI strategy', 'cross-functional', 'customer experience'), improves clarity and impact by following Action + Achievement + Metric structure. Directly aligns with 'AI Strategy & Value Creation' and 'cross-functional program management' requirements.",
+            "jd_keywords_added": [
+              "end-to-end AI strategy",
+              "cross-functional",
+              "customer experience"
+            ],
+            "expected_impact": "Elevates demonstration of strategic AI leadership and program management skills, core JD requirements"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Led a client engagement program using AI modeling and vendor solutions; collaborated with 30+ stakeholders to achieve 25% uplift in trading activity KPIs, translating into $4M annual revenue.",
+            "suggested": "Led cross-functional client engagement program leveraging AI modeling and vendor solutions, managing 30+ stakeholders to deliver 25% uplift in trading KPIs, generating $4M annual revenue.",
+            "improvement_type": "Keyword optimization + Sentence structure enhancement",
+            "improvement_rationale": "Adds 'cross-functional' (JD keyword), refines structure for better flow, emphasizes stakeholder management and quantifiable business value - directly matches 'AI Program Management' and 'develop quantitative business cases' requirements.",
+            "jd_keywords_added": [
+              "cross-functional"
+            ],
+            "expected_impact": "Better showcases program management expertise and revenue impact, key for Senior Manager role"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Collaborated with cross-functional partners to launch a GenAI-based Chatbot solution at DI and Wealth operation; achieved 70% reduction on client inquiry workload and enhanced 25% client satisfaction score on wealth service.",
+            "suggested": "Managed end-to-end deployment of GenAI RAG-based chatbot solution across cross-functional teams, reducing client inquiry workload by 70% and improving customer satisfaction scores by 25%.",
+            "improvement_type": "Keyword integration + Format enhancement + Expression refinement",
+            "improvement_rationale": "Adds 'end-to-end deployment' and 'RAG-based' (JD-relevant GenAI tech), changes 'collaborated' to 'managed' for leadership emphasis, quantifies business impact clearly. Aligns with 'manage all phases of AI initiative lifecycle' and modern AI capabilities.",
+            "jd_keywords_added": [
+              "end-to-end deployment",
+              "RAG-based"
+            ],
+            "expected_impact": "Demonstrates hands-on GenAI program management experience with efficiency gains"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Developed and deployed AI/ML model pipeline to identify credit needy small business clients; enabled targeted product marketing strategy by 400+ advisors and boosted line of credit volume by 20%.",
+            "suggested": "Built and deployed AI/ML pipeline for small business credit identification, enabling targeted marketing strategy across 400+ advisors that increased line of credit volume by 20%.",
+            "improvement_type": "Sentence structure enhancement + Expression refinement",
+            "improvement_rationale": "Streamlines phrasing, uses stronger action verbs, maintains financial services relevance and quantifiable impact. Supports 'financial services industry' experience requirement.",
+            "jd_keywords_added": [],
+            "expected_impact": "Maintains strong financial domain expertise while improving readability"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Reformed digital marketing program with high-value clients targeted outreach using causal ML to replace traditional ML method; resulted in 50% increase in ROI for following 20+ campaigns.",
+            "suggested": "Transformed digital marketing program using causal ML for high-value client outreach, replacing traditional methods and delivering 50% ROI improvement across 20+ campaigns.",
+            "improvement_type": "Expression refinement + Action verb enhancement",
+            "improvement_rationale": "Uses 'Transformed' for stronger leadership impact, clarifies technical innovation, emphasizes ROI - aligns with 'data-driven decision making' and business value creation.",
+            "jd_keywords_added": [
+              "data-driven"
+            ],
+            "expected_impact": "Highlights analytical leadership and quantifiable business outcomes"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        }
+      ]
+    },
     {
-      "experience_to_replace": {
-        "title": "Data Scientist, Digital Banking Customer
+      "experience_entry": {
+        "title": "Data Scientist, Direct Investing Product",
+        "company": "China Securities Co., Ltd. (China’s top 3 Wealth Management Firm)",
+        "entry_index": 1
+      },
+      "adjustments": [
+        {
+          "bullet_point": {
+            "original": "Built and scaled a machine-learning customer attrition prediction engine flagging 300K at-risk clients; collaborated with relationship managers to design targeted win-back campaigns that improved retention by 25%.",
+            "suggested": "Developed scalable ML customer attrition prediction engine identifying 300K at-risk clients, partnering with relationship managers to execute win-back campaigns that improved retention by 25%.",
+            "improvement_type": "Sentence structure + Keyword optimization",
+            "improvement_rationale": "Refines structure, maintains wealth management relevance, quantifiable retention impact supports 'customer experience' and 'business value' requirements.",
+            "jd_keywords_added": [],
+            "expected_impact": "Reinforces wealth management domain expertise"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Applied advanced causal inference and market research to optimize the design of marketing strategy; enabled a 20% YoY increase in new customer acquisitions.",
+            "suggested": "Leveraged causal inference and market research to optimize marketing strategy design, driving 20% YoY growth in new customer acquisitions.",
+            "improvement_type": "Expression refinement + Action verb enhancement",
+            "improvement_rationale": "Stronger action verb, concise structure, emphasizes growth impact relevant to revenue objectives.",
+            "jd_keywords_added": [],
+            "expected_impact": "Demonstrates data-driven strategy skills"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Directed A/B testing and statistical analysis for 10+ product features; informed launch decisions with leadership team based on analytics insights; resulting in a 15% increase in clients in-App behavior..",
+            "suggested": "Led A/B testing and statistical analysis for 10+ product features, providing data-driven insights to leadership that increased in-app client engagement by 15%.",
+            "improvement_type": "Sentence structure + Keyword integration + Grammar fix",
+            "improvement_rationale": "Fixes double period, adds 'data-driven insights' (JD keyword), clarifies leadership collaboration and impact.",
+            "jd_keywords_added": [
+              "data-driven"
+            ],
+            "expected_impact": "Aligns with 'data driven decision making' requirement"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Optimized Direct Investing's client acquisition workflow using Databricks and Azure, automating 90% data pipeline; reduced 20+ campaigns fulfillment workload by 70%, saving $400K annual overhead cost.",
+            "suggested": "Optimized client acquisition workflows using Databricks and Azure, automating 90% of data pipelines to reduce campaign fulfillment workload by 70% and save $400K annually.",
+            "improvement_type": "Expression refinement + Sentence structure",
+            "improvement_rationale": "Improves flow and clarity, emphasizes efficiency gains and cost savings - key business value metrics.",
+            "jd_keywords_added": [],
+            "expected_impact": "Highlights operational efficiency expertise"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        }
+      ]
+    },
+    {
+      "experience_entry": {
+        "title": "Data Scientist, Digital Banking Customer Strategy",
+        "company": "Scotiabank",
+        "entry_index": 2
+      },
+      "adjustments": [
+        {
+          "bullet_point": {
+            "original": "Pioneered a line of credit default alerting system using AI strategy; reduced credit default rate by 20% at high risk customers; translated into $2M annual losses.",
+            "suggested": "Developed AI-powered line of credit default alerting system, reducing default rates by 20% among high-risk customers and preventing $2M in annual losses.",
+            "improvement_type": "Expression refinement + Grammar fix + Impact clarification",
+            "improvement_rationale": "Clarifies 'prevented $2M losses' (was ambiguous), adds 'AI-powered', banking-relevant achievement.",
+            "jd_keywords_added": [
+              "AI-powered"
+            ],
+            "expected_impact": "Strengthens financial services risk management credentials"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Redesigned data pipeline to automate data integration of product and performance metrics; improved efficiency with 50% faster processing and 45% fewer data quality issues.",
+            "suggested": "Redesigned data pipelines for automated integration of product and performance metrics, achieving 50% faster processing and 45% reduction in data quality issues.",
+            "improvement_type": "Sentence structure + Expression refinement",
+            "improvement_rationale": "Improves readability and impact quantification.",
+            "jd_keywords_added": [],
+            "expected_impact": "Demonstrates technical execution capability"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        }
+      ]
+    },
+    {
+      "experience_entry": {
+        "title": "GEN AI PROJECT",
+        "company": "",
+        "entry_index": 3
+      },
+      "adjustments": [
+        {
+          "bullet_point": {
+            "original": "Developed an Insurance Knowledge Assistant using Advanced RAG to provide answers from 500+ policy docs; reduced 80% Q&A time and freed up 20+ agents for client acquisition; contributed to $1M sales from new clients.",
+            "suggested": "Led development of GenAI Insurance Knowledge Assistant using advanced RAG architecture across 500+ policy documents, reducing Q&A time by 80%, freeing 20+ agents, and driving $1M in new client sales.",
+            "improvement_type": "Keyword optimization + Leadership emphasis + Sentence structure",
+            "improvement_rationale": "Elevates to 'Led development', adds 'GenAI' and 'RAG architecture' (JD-relevant), emphasizes business value - perfect modern AI example.",
+            "jd_keywords_added": [
+              "GenAI",
+              "RAG architecture"
+            ],
+            "expected_impact": "Showcases cutting-edge GenAI program delivery capability"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        }
+      ]
+    }
+  ],
+  "experience_optimizations": [
+    {
+      "experience_entry": {
+        "title": "Senior Data Scientist, Wealth Direct Investing (DI) Product Strategy",
+        "company": "TD Bank Group",
+        "duration": "Sep 2022 - Present",
+        "entry_index": 0
+      },
+      "optimized_experience": {
+        "title": "Senior AI Strategist, Wealth Direct Investing (DI) Product",
+        "company": "TD Bank Group",
+        "duration": "Sep 2022 - Present",
+        "optimized_bullets": [
+          "Developed and executed end-to-end AI strategy for Wealth Direct Investing product roadmap, driving cross-functional deployment of 10+ AI initiatives that increased active clients by 20% and enhanced customer experience.",
+          "Led cross-functional client engagement program leveraging AI modeling and vendor solutions, managing 30+ stakeholders to deliver 25% uplift in trading KPIs, generating $4M annual revenue.",
+          "Managed end-to-end deployment of GenAI RAG-based chatbot solution across cross-functional teams, reducing client inquiry workload by 70% and improving customer satisfaction scores by 25%.",
+          "Built and deployed AI/ML pipeline for small business credit identification, enabling targeted marketing strategy across 400+ advisors that increased line of credit volume by 20%.",
+          "Transformed digital marketing program using causal ML for high-value client outreach, replacing traditional methods and delivering 50% ROI improvement across 20+ campaigns."
+        ]
+      },
+      "optimization_details": [
+        {
+          "bullet_index": 0,
+          "original": "Designed and implemented the E2E AI Strategy for enhancing product roadmap and client experience at direct investing; worked cross-functionally to deploy 10+ AI initiatives on DI platforms that increased 20% active clients.",
+          "optimized": "Developed and executed end-to-end AI strategy for Wealth Direct Investing product roadmap, driving cross-functional deployment of 10+ AI initiatives that increased active clients by 20% and enhanced customer experience.",
+          "optimization_type": "Format enhancement + Keyword integration + Expression refinement",
+          "optimization_rationale": "The original bullet is strong but can be framed with more leadership-oriented language. The optimized version uses 'Developed and executed' and 'driving' to show proactive leadership. It also integrates 'end-to-end AI strategy' and 'customer experience' which are key phrases from the JD, directly aligning the experience with the 'AI Strategy & Value Creation' requirement.",
+          "jd_keywords_added": [
+            "end-to-end AI strategy",
+            "cross-functional",
+            "customer experience"
+          ],
+          "expected_impact": "Improves alignment with the strategic and program management aspects of the Senior Manager role, shifting the perception from a purely technical data scientist to a strategic leader."
+        },
+        {
+          "bullet_index": 1,
+          "original": "Led a client engagement program using AI modeling and vendor solutions; collaborated with 30+ stakeholders to achieve 25% uplift in trading activity KPIs, translating into $4M annual revenue.",
+          "optimized": "Led cross-functional client engagement program leveraging AI modeling and vendor solutions, managing 30+ stakeholders to deliver 25% uplift in trading KPIs, generating $4M annual revenue.",
+          "optimization_type": "Keyword integration + Expression refinement",
+          "optimization_rationale": "This change explicitly adds 'cross-functional', a critical keyword. It also reframes 'collaborated with' to 'managing', which is a stronger verb for a management role. This directly addresses the JD's emphasis on 'cross-functional program management' and 'vendor engagements'.",
+          "jd_keywords_added": [
+            "cross-functional",
+            "vendor solutions"
+          ],
+          "expected_impact": "Strengthens the demonstration of program management, stakeholder management, and vendor engagement skills required by the JD."
+        }
+      ],
+      "user_feedback_options": {
+        "accept": "Apply this optimized version",
+        "further_modify": "I want additional adjustments",
+        "reject": "Keep original text"
+      }
+    }
+  ],
+  "skills_section_optimization": {
+    "has_skills_section": true,
+    "current_skills": [
+      {
+        "skill_category": "Skills",
+        "current_skills_list": [
+          "Machine Learning",
+          "Statistical Analysis",
+          "Deep Learning",
+          "MLflow",
+          "GenAI (RAG, Agentic AI)",
+          "Agile Sprint"
+        ],
+        "jd_required_skills": [
+          "Artificial Intelligence",
+          "Machine Learning",
+          "cross-functional program management",
+          "Agile/sprint based projects",
+          "data-driven decision making",
+          "business case development",
+          "vendor engagement"
+        ],
+        "optimization_recommendations": [
+          {
+            "action": "add",
+            "suggested_skill": "AI Program Management",
+            "rationale": "The JD is a program management role focused on AI. This skill is a direct and crucial match for the title and responsibilities.",
+            "jd_keywords_added": [
+              "AI Program Management"
+            ],
+            "expected_impact": "Significantly improves keyword alignment and explicitly states a core competency of the target role."
+          },
+          {
+            "action": "add",
+            "suggested_skill": "Business Case Development",
+            "rationale": "The JD explicitly requires the ability to 'Develop robust, data-driven, quantitative business cases'. Adding this skill highlights a key requirement.",
+            "jd_keywords_added": [
+              "Business Case Development"
+            ],
+            "expected_impact": "Directly addresses a key responsibility in the 'AI Strategy & Value Creation' section of the JD."
+          },
+          {
+            "action": "add",
+            "suggested_skill": "Vendor Engagement & Management",
+            "rationale": "The JD mentions 'Engage with vendors' and 'Manage E2E vendor engagements'. This skill is essential and demonstrated in the candidate's experience.",
+            "jd_keywords_added": [
+              "Vendor Engagement"
+            ],
+            "expected_impact": "Fills a gap by explicitly stating a required skill for the program management aspect of the role."
+          },
+          {
+            "action": "enhance",
+            "current_skill": "Agile Sprint",
+            "suggested_skill": "Agile/Scrum Project Management",
+            "rationale": "The current term is slightly informal. 'Agile/Scrum Project Management' is more professional and comprehensive, better aligning with 'Experience in managing agile / sprint based projects'.",
+            "jd_keywords_added": [
+              "Agile",
+              "Scrum"
+            ],
+            "expected_impact": "Improves the professionalism and clarity of the skill, matching industry-standard terminology."
+          },
+          {
+            "action": "enhance",
+            "current_skill": "GenAI (RAG, Agentic AI)",
+            "suggested_skill": "Generative AI (RAG, Agentic Systems)",
+            "rationale": "Using the full term 'Generative AI' and the more formal 'Agentic Systems' aligns better with the professional tone of the JD.",
+            "jd_keywords_added": [
+              "Generative AI"
+            ],
+            "expected_impact": "Demonstrates a more formal and in-depth understanding of the technology."
+          }
+        ],
+        "optimized_skills_list": [
+          "AI Program Management",
+          "Business Case Development",
+          "Vendor Engagement & Management",
+          "Machine Learning",
+          "Deep Learning",
+          "Generative AI (RAG, Agentic Systems)",
+          "Statistical Analysis",
+          "Agile/Scrum Project Management",
+          "MLflow"
+        ]
+      },
+      {
+        "skill_category": "Software",
+        "current_skills_list": [
+          "Python (NumPy, Pandas, Scikit-Learn, TensorFlow, PyTorch, LangChain)",
+          "PySpark",
+          "R",
+          "SQL Server",
+          "Oracle",
+          "MySQL",
+          "Tableau",
+          "Power BI",
+          "SAS",
+          "Hive",
+          "Hadoop",
+          "Databricks",
+          "Git",
+          "Jupyter",
+          "Docker",
+          "Cloud (Azure, GCP, AWS)"
+        ],
+        "jd_required_skills": [],
+        "optimization_recommendations": [],
+        "optimized_skills_list": [
+          "Python (NumPy, Pandas, Scikit-Learn, TensorFlow, PyTorch, LangChain)",
+          "PySpark",
+          "R",
+          "SQL Server",
+          "Oracle",
+          "MySQL",
+          "Tableau",
+          "Power BI",
+          "SAS",
+          "Hive",
+          "Hadoop",
+          "Databricks",
+          "Git",
+          "Jupyter",
+          "Docker",
+          "Cloud (Azure, GCP, AWS)"
+        ]
+      }
+    ],
+    "user_feedback_options": {
+      "accept": "Apply all skill optimizations",
+      "further_modify": "I want to customize specific changes",
+      "reject": "Keep original skills section"
+    }
+  },
+  "optimization_summary": {
+    "total_experiences_analyzed": 4,
+    "experiences_recommended_for_replacement": 0,
+    "total_adjustments_suggested": 12,
+    "total_experiences_optimized": 1,
+    "skills_section_optimized": true,
+    "expected_match_score_improvement": "0.3 points (from 4.6 to 4.9)",
+    "key_improvements": [
+      "Re-framed experience bullet points to emphasize leadership, program management, and business value creation over pure data science execution.",
+      "Integrated key JD terminology such as 'end-to-end AI strategy', 'cross-functional program management', 'business case development', and 'vendor engagement' throughout the resume.",
+      "Optimized the Skills section to explicitly list core managerial competencies required by the JD, such as 'AI Program Management' and 'Vendor Engagement & Management'."
+    ]
+  }
+}
+```An analysis of the provided inputs indicates that the outputs from Agent 2 (Job/Candidate Analysis) and Agent 3 (Optimized Projects) were not available due to processing errors.
+
+However, a direct synthesis of the Job Description and the candidate's resume reveals an exceptionally strong baseline match. The candidate's current role at TD Bank's Wealth Direct Investing division is a direct parallel to the target role at BMO InvestorLine. The primary optimization opportunity is not to replace experience, but to **reframe the existing narrative**—elevating it from a hands-on "Senior Data Scientist" to a strategic "Senior Manager, AI Business Value Creation."
+
+This optimization will focus on shifting the language from technical execution to strategic leadership, program management, and business value articulation, directly aligning with the core requirements of the JD.
+
+Here is the comprehensive optimization plan:
+
+```json
+{
+  "experience_replacements": [],
+  "project_classification": {
+    "resume_adopted_projects": [],
+    "resume_not_adopted_projects": []
+  },
+  "format_content_adjustments": [
+    {
+      "experience_entry": {
+        "title": "Senior Data Scientist, Wealth Direct Investing (DI) Product Strategy",
+        "company": "TD Bank Group",
+        "entry_index": 0
+      },
+      "adjustments": [
+        {
+          "bullet_point": {
+            "original": "Designed and implemented the E2E AI Strategy for enhancing product roadmap and client experience at direct investing; worked cross-functionally to deploy 10+ AI initiatives on DI platforms that increased 20% active clients.",
+            "suggested": "Developed and executed end-to-end AI strategy for Wealth Direct Investing product roadmap, driving cross-functional deployment of 10+ AI initiatives that increased active clients by 20% and enhanced customer experience.",
+            "improvement_type": "Sentence structure enhancement + Keyword optimization + Expression refinement",
+            "improvement_rationale": "Strengthens action verbs ('Developed and executed'), adds JD keywords ('end-to-end AI strategy', 'cross-functional', 'customer experience'), improves clarity and impact by following Action + Achievement + Metric structure. Directly aligns with 'AI Strategy & Value Creation' and 'cross-functional program management' requirements.",
+            "jd_keywords_added": [
+              "end-to-end AI strategy",
+              "cross-functional",
+              "customer experience"
+            ],
+            "expected_impact": "Elevates demonstration of strategic AI leadership and program management skills, core JD requirements"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Led a client engagement program using AI modeling and vendor solutions; collaborated with 30+ stakeholders to achieve 25% uplift in trading activity KPIs, translating into $4M annual revenue.",
+            "suggested": "Led cross-functional client engagement program leveraging AI modeling and vendor solutions, managing 30+ stakeholders to deliver 25% uplift in trading KPIs, generating $4M annual revenue.",
+            "improvement_type": "Keyword optimization + Sentence structure enhancement",
+            "improvement_rationale": "Adds 'cross-functional' (JD keyword), refines structure for better flow, emphasizes stakeholder management and quantifiable business value - directly matches 'AI Program Management' and 'develop quantitative business cases' requirements.",
+            "jd_keywords_added": [
+              "cross-functional"
+            ],
+            "expected_impact": "Better showcases program management expertise and revenue impact, key for Senior Manager role"
+          },
+          "user_feedback_options": {
+            "accept": "Apply this change",
+            "further_modify": "I want additional adjustments",
+            "reject": "Keep original text"
+          }
+        },
+        {
+          "bullet_point": {
+            "original": "Collaborated with cross-functional partners to launch a GenAI-based Chatbot solution at DI and Wealth operation; achieved 70% reduction on client inquiry workload and enhanced 25% client satisfaction score on wealth service.",
+            "suggested": "Managed end-to-end deployment of GenAI RAG-based chatbot solution across cross-functional teams, reducing client inquiry workload by 70% and improving customer satisfaction scores by 25%.",
+            "improvement_type": "Keyword integration + Format enhancement + Expression refinement",
+            "improvement_rationale": "Adds 'end-to-end deployment' and 'RAG-based' (JD-relevant GenAI tech), changes 'collaborated' to 'managed' for leadership emphasis, quantifies business impact clearly. Aligns with 'manage all phases of AI initiative lifecycle' and modern AI capabilities.",

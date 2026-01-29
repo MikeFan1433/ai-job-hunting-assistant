@@ -78,32 +78,58 @@ def deploy_to_ai_builders(repo_url: str, service_name: str, branch: str = "main"
         with httpx.Client(timeout=60.0) as client:
             response = client.post(url, headers=headers, json=payload)
             
-            if response.status_code == 200 or response.status_code == 201:
+            if response.status_code in [200, 201, 202]:
                 data = response.json()
-                print("✅ 部署请求已提交")
+                
+                # Handle 202 Accepted (deployment started)
+                if response.status_code == 202:
+                    print("✅ 部署请求已接受，部署已启动")
+                else:
+                    print("✅ 部署请求已提交")
+                
                 print()
                 print("📊 部署信息:")
-                print(json.dumps(data, indent=2, ensure_ascii=False))
+                print(f"   服务名称: {data.get('service_name', service_name)}")
+                print(f"   状态: {data.get('status', 'unknown')}")
+                print(f"   公共 URL: {data.get('public_url', f'https://{service_name}.ai-builders.space/')}")
+                print(f"   分支: {data.get('branch', branch)}")
                 print()
                 
                 # Check for streaming logs
                 streaming_logs = data.get("streaming_logs", "")
                 if streaming_logs:
-                    print("📋 构建日志:")
-                    print("-" * 60)
-                    print(streaming_logs)
-                    print("-" * 60)
+                    # Show last 50 lines of logs
+                    log_lines = streaming_logs.split('\n')
+                    if len(log_lines) > 50:
+                        print("📋 构建日志 (最近 50 行):")
+                        print("-" * 60)
+                        print('\n'.join(log_lines[-50:]))
+                        print("-" * 60)
+                    else:
+                        print("📋 构建日志:")
+                        print("-" * 60)
+                        print(streaming_logs)
+                        print("-" * 60)
                 else:
                     print("ℹ️  构建日志将在部署过程中生成")
                     print("   可以使用 GET /v1/deployments/{service_name}/logs 查看完整日志")
                 
+                # Show message if available
+                message = data.get("message", "")
+                if message:
+                    print()
+                    print("ℹ️  消息:")
+                    print(f"   {message}")
+                
                 print()
                 print("⏳ 部署通常需要 5-10 分钟")
-                print(f"🔗 部署完成后访问: https://{service_name}.ai-builders.space")
+                public_url = data.get("public_url", f"https://{service_name}.ai-builders.space/")
+                print(f"🔗 部署完成后访问: {public_url}")
                 print()
                 print("💡 提示:")
                 print("   - 使用 check_deployment_status.py 检查部署状态")
                 print("   - 或访问 Deployment Portal 查看进度")
+                print("   - 部署完成后，等待几分钟再访问以确保服务完全启动")
                 
                 return data
             else:
