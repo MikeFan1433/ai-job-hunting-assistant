@@ -1,6 +1,6 @@
 # AI Job Hunting Assistant
 
-An agentic web application that helps candidates align their resume and interview narrative with a specific job description (JD). It ingests a resume (PDF or text), optional project notes, and a target role’s JD, then produces structured match analysis, resume bullet refinements, a consolidated final resume draft, and themed interview preparation.
+An agentic web application that helps candidates align their resume and interview narrative with a specific job description (JD). It ingests a resume (PDF or pasted text), job metadata, and the target JD, then produces structured match analysis, resume bullet refinements, a consolidated final resume draft, and themed interview preparation.
 
 ---
 
@@ -25,7 +25,7 @@ An agentic web application that helps candidates align their resume and intervie
 
 ## 1. Objective
 
-Reduce friction between a candidate’s materials and a concrete job posting by:
+Reduce friction between a candidate’s resume and a concrete job posting by:
 
 - **Diagnosing fit** against the JD (strengths, gaps, and role expectations).  
 - **Improving resume bullets** with JD-aware suggestions and a guided accept / edit / reject workflow.  
@@ -41,7 +41,7 @@ The product is optimized for **one job at a time**: each run is scoped to a sing
 |--------|----------------|
 | **Active job seekers** | Tailor resume and talking points quickly per application. |
 | **Career switchers** | Map transferable skills to unfamiliar JD language and expectations. |
-| **Students and early-career hires** | Structure projects and internships into credible, JD-aligned bullets. |
+| **Students and early-career hires** | Turn internships and academic work into JD-aligned resume language. |
 | **Experienced professionals** | Refresh narrative for a specific level (e.g. staff, lead, manager) or domain. |
 
 The UI supports **English and Chinese** for interface copy and workflow messages; structured LLM outputs follow the user-selected language where the pipeline is configured to do so.
@@ -52,9 +52,9 @@ The UI supports **English and Chinese** for interface copy and workflow messages
 
 ### Core workflow
 
-1. **Input** — Job title, company, region (optional), JD text, resume (PDF upload or paste), optional project / portfolio text.  
+1. **Input** — Job title, company, region (optional), JD text, and resume (PDF upload or paste).  
 2. **Validation** — Ensures minimum resume completeness before expensive LLM steps.  
-3. **Analysis & packaging** — JD analysis, match view, ideal-candidate / gap framing, and project-oriented packaging for the role.  
+3. **JD analysis & match** — Structured role understanding, fit framing, and dashboard views (e.g. scenarios, profile, match).  
 4. **Resume optimization** — Bullet-level suggestions tied to the JD; user confirms choices to build a **final resume** draft.  
 5. **Interview preparation** — After resume confirmation, generates themed prep: behavioral (including story frameworks), project deep-dive, and business-domain questions, plus a short preparation summary.
 
@@ -91,26 +91,27 @@ For concise local commands, see **`START_SERVICES.md`** in this repository.
 - **API layer**: `workflow_api.py` (FastAPI) — workflow lifecycle, progress endpoints, resume and interview sub-routes, static / SPA hosting when `frontend/dist` exists.  
 - **Client**: React 18, TypeScript, Vite, Tailwind CSS, Zustand; health check and **SSE** progress with **automatic polling fallback** for resilience.
 
-### Specialized agents (sequential core pipeline)
+### Specialized agents (documented pipeline)
+
+The core path is a **four-step sequential** workflow on the server, plus **interview generation** after the user finalizes resume edits.
 
 | Agent | Responsibility |
 |-------|------------------|
 | **Agent 1** | **Input validation** — Blocks incomplete resumes before downstream cost. |
 | **Agent 2** | **JD analysis & match** — Structured understanding of the role, fit, and candidate-facing insights (configurable fast path for latency). |
-| **Agent 3** | **Project packaging** — Reframes project material in a role-relevant way. |
-| **Agent 4** | **Resume optimization** — JD-grounded bullet suggestions and structured resume output for the UI and export flow. |
-| **Agent 5** | **Interview preparation** — Runs **asynchronously** after the user finalizes resume choices; consumes JD plus Agent 2 / Agent 4 context for themed prep. |
+| **Agent 4** | **Resume optimization** — JD- and analysis-grounded bullet suggestions and structured resume output for the UI and export flow. |
+| **Agent 5** | **Interview preparation** — Runs **asynchronously** after the user finalizes resume choices; consumes JD plus prior analysis and resume-optimization context for themed prep. |
 
-Prompts and compressed prompt modules live alongside each agent (`agent*_prompt_compressed.py`, `agent_prompts.py`). The stack calls an **OpenAI-compatible chat completions** endpoint (see configuration) with JSON-mode style responses where enabled.
+Prompts and compressed prompt modules live in `agent_prompts.py` and `*_prompt_compressed.py` where used. The stack calls an **OpenAI-compatible chat completions** endpoint (see configuration) with JSON-mode style responses where enabled.
 
 ### Data flow (conceptual)
 
 ```text
-User inputs → Agent 1 → Agent 2 → Agent 3 → Agent 4 → Dashboard
-                                                      ↓
-                                    User confirms bullets → Final resume
-                                                      ↓
-                                              Agent 5 (async) → Interview tab
+User inputs → Agent 1 → Agent 2 → Agent 4 → Dashboard
+                                            ↓
+                          User confirms bullets → Final resume
+                                            ↓
+                                    Agent 5 (async) → Interview tab
 ```
 
 ---
@@ -207,7 +208,7 @@ Primary variables are read in `config.py`. Commonly adjusted:
 | `AI_BUILDER_BASE_URL` | OpenAI-compatible gateway base URL. |
 | `LLM_MODEL_JSON` / `LLM_MODEL` | Default chat model for structured agents. |
 | `AGENT2_FAST_MODE` | Faster JD analysis path when set to `1` (default in repo). |
-| `AGENT2_FAST_MODEL`, `AGENT3_FAST_MODEL`, `AGENT4_FAST_MODEL`, `AGENT5_FAST_MODEL` | Per-agent fast models where applicable. |
+| `AGENT2_FAST_MODEL`, `AGENT4_FAST_MODEL`, `AGENT5_FAST_MODEL` | Per-agent fast models where applicable. |
 | `AGENT5_DISABLED` | Set to `1` to skip interview generation features. |
 | `DISABLE_JSON_MODE` | Set to `1` if the provider does not support `response_format` JSON mode. |
 
@@ -239,8 +240,8 @@ See inline comments in `config.py` for the full list and provider notes.
 ```text
 .
 ├── workflow_api.py          # FastAPI app and routes
-├── agent1.py … agent5.py    # Agent implementations
-├── *_prompt_compressed.py   # Compressed / modular prompts
+├── agent1.py, agent2.py, agent4.py, agent5.py   # documented pipeline steps
+├── agent_prompts.py, *\_prompt_compressed.py   # prompts (as used by agents)
 ├── config.py                # Environment and model configuration
 ├── resume_optimization_service.py, resume_export.py
 ├── frontend/                # React + Vite SPA
