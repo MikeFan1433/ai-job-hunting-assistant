@@ -17,7 +17,7 @@ type TabType = 'scenario' | 'profile' | 'match' | 'resume' | 'interview';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { workflow, setInterview, inputs, setInputs } = useAppStore();
+  const { workflow, setInterview, inputs, setInputs, final_resume: finalResumeFromStore } = useAppStore();
   const ui = useMemo(() => getUiStrings(inputs.preferred_lang), [inputs.preferred_lang]);
   const langLocked = Boolean(workflow.workflow_id);
   const [activeTab, setActiveTab] = useState<TabType>('scenario');
@@ -178,7 +178,7 @@ export default function DashboardPage() {
             onFeedbackUpdate={loadFeedbackStatus}
             feedbackStatus={feedbackStatus}
             onExportResume={handleExportResume}
-            hasFinalResume={!!generatedResume || !!useAppStore.getState().final_resume}
+            hasFinalResume={Boolean(generatedResume || finalResumeFromStore)}
             onConfirmModifications={handleConfirmModifications}
             generatingResume={generatingResume}
             preparingInterview={preparingInterview}

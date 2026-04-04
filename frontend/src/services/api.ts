@@ -81,21 +81,40 @@ export const resumeAPI = {
     return response.data;
   },
   generateFinal: async () => {
-    const response = await api.post('/api/v1/resume/generate');
+    const response = await api.post('/api/v1/resume/generate', undefined, { timeout: 180000 });
     return response.data;
   },
   export: async (format: 'pdf' | 'docx', title: string) => {
-    const response = await api.post('/api/v1/resume/export', { format, title }, {
-      responseType: 'blob',
-    });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${title}.${format}`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    return response.data;
+    try {
+      const response = await api.post('/api/v1/resume/export', { format, title }, {
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${title}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return response.data;
+    } catch (e: any) {
+      const data = e.response?.data;
+      if (data instanceof Blob) {
+        const text = await data.text();
+        try {
+          const j = JSON.parse(text);
+          const d = j.detail;
+          throw new Error(typeof d === 'string' ? d : JSON.stringify(j));
+        } catch (parseErr: unknown) {
+          if (parseErr instanceof SyntaxError) {
+            throw new Error(text.slice(0, 300) || e.message);
+          }
+          throw parseErr;
+        }
+      }
+      throw e;
+    }
   },
   exportProjects: async (format: 'pdf' | 'docx') => {
     const response = await api.post('/api/v1/export/projects', { format }, { responseType: 'blob' });
@@ -229,7 +248,7 @@ export const workflowAPI = {
 // Interview API
 export const interviewAPI = {
   prepare: async (request: any) => {
-    const response = await api.post('/api/v1/interview/prepare', request);
+    const response = await api.post('/api/v1/interview/prepare', request, { timeout: 120000 });
     return response.data;
   },
   getProgress: async (interview_id: string) => {

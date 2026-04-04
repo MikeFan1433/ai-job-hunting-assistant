@@ -258,6 +258,27 @@ class ResumeOptimizationService:
             "summary": self._generate_modification_summary(modifications_applied),
             "project_classification": updated_classification  # 分类摘要（索引和名称）
         }
+
+    def build_agent4_outputs_for_interview_prep(self) -> Dict:
+        """
+        Build Agent 4 handoff for interview prep from the current final resume only.
+
+        Call this after ``apply_feedback_and_generate_resume`` (or workflow completion) has set
+        ``self.final_resume``. Avoids re-running the full apply pipeline, which duplicates LLM work
+        and can exceed HTTP client timeouts on deploy.
+        """
+        fr = (self.final_resume or "").strip()
+        if not fr:
+            return {"error": "Final resume not available"}
+        classified_projects = self.get_classified_projects_for_interview()
+        optimized_work_experiences = self._extract_work_experiences(fr)
+        optimized_project_documents = self._get_optimized_project_documents(classified_projects)
+        return {
+            "final_resume": fr,
+            "classified_projects": classified_projects,
+            "optimized_work_experiences": optimized_work_experiences,
+            "optimized_project_documents": optimized_project_documents,
+        }
     
     def _extract_work_experiences(self, resume_text: str) -> List[Dict]:
         """

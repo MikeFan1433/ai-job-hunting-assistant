@@ -891,24 +891,19 @@ async def prepare_interview(request: InterviewPrepareRequest, background_tasks: 
         "preferred_lang": _ipl,
     }
 
-    # Get required data from optimization service
-    # This should be called after user confirms all modifications
-    final_result = optimization_service.apply_feedback_and_generate_resume()
+    # Use final resume already produced by POST /api/v1/resume/generate (or workflow).
+    # Do NOT call apply_feedback_and_generate_resume() again here — it repeats heavy work and
+    # often exceeds the frontend axios timeout (30s), breaking interview start on deploy.
+    handoff = optimization_service.build_agent4_outputs_for_interview_prep()
+    if "error" in handoff:
+        raise HTTPException(status_code=400, detail=handoff["error"])
 
-    if "error" in final_result:
-        raise HTTPException(status_code=400, detail=f"Failed to generate final resume: {final_result['error']}")
-
-    final_resume = final_result["final_resume"]
-    classified_projects = final_result.get("classified_projects", {})
-    optimized_work_experiences = final_result.get("optimized_work_experiences", [])
-    optimized_project_documents = final_result.get("optimized_project_documents", [])
-    
-    # Prepare Agent 4 outputs for Agent 5
+    final_resume = handoff["final_resume"]
     agent4_outputs = {
         "final_resume": final_resume,
-        "classified_projects": classified_projects,
-        "optimized_work_experiences": optimized_work_experiences,
-        "optimized_project_documents": optimized_project_documents
+        "classified_projects": handoff.get("classified_projects", {}),
+        "optimized_work_experiences": handoff.get("optimized_work_experiences", []),
+        "optimized_project_documents": handoff.get("optimized_project_documents", []),
     }
     
     background_tasks.add_task(
