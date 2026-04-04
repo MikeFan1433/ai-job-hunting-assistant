@@ -66,3 +66,7 @@ deployment-*.tar.gz
 *.tmp
 *.temp
 .cache/
+
+# LLM debug dumps (written at runtime by some agents)
+*_raw_response.txt
+agent*_raw_response.txt

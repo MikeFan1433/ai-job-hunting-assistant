@@ -27,6 +27,14 @@ def parse_llm_json_response(content: str, debug_file: Optional[str] = None) -> D
             pass  # Ignore file write errors
     
     original_content = content
+
+    # Fast path: if content is already valid JSON, return immediately
+    stripped = content.strip()
+    if stripped.startswith('{'):
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
     
     # Step 1: Remove handoff tags and XML/HTML-like tags
     # But preserve content that might be after handoff tags
@@ -40,10 +48,84 @@ def parse_llm_json_response(content: str, debug_file: Optional[str] = None) -> D
         content = re.sub(r'<parameter.*?>.*?</parameter>', '', content, flags=re.DOTALL | re.IGNORECASE)
         content = re.sub(r'<[^>]+>', '', content)  # Remove any remaining HTML/XML tags
     
-    # Step 2: Remove markdown code blocks
-    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+    # Step 2: Remove markdown code blocks and extract JSON from mixed content
+    # Strategy: Find the largest valid JSON object in the content
+    
+    # First, try to find JSON in code blocks (most common case)
+    json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', content, re.DOTALL)
     if json_match:
         content = json_match.group(1)
+    else:
+        # Also try to find JSON after text explanations (common when LLM adds explanations)
+        # Look for patterns like "Here is...", "JSON:", etc. followed by JSON
+        text_json_patterns = [
+            r'(?:Here is|JSON|Response|Output|Result).*?:\s*(\{.*\})',
+            r'```\s*(\{.*\})\s*```',  # Code block without json tag
+        ]
+        found_json = False
+        for pattern in text_json_patterns:
+            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+            if match:
+                content = match.group(1)
+                found_json = True
+                break
+        
+        # If no code block or text pattern found, try multiple strategies to find JSON
+        if not found_json:
+            # Strategy 1: Find JSON after common prefixes
+            prefixes = [
+                r'Here is.*?:\s*(\{.*\})',
+                r'JSON.*?:\s*(\{.*\})',
+                r'Response.*?:\s*(\{.*\})',
+                r'Output.*?:\s*(\{.*\})',
+            ]
+            for pattern in prefixes:
+                match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+                if match:
+                    content = match.group(1)
+                    break
+        
+        # Strategy 2: Find the first complete JSON object
+        if content.find('{') != -1:
+            first_brace = content.find('{')
+            brace_count = 0
+            in_string = False
+            escape_next = False
+            json_start = first_brace
+            json_end = -1
+            
+            for i in range(first_brace, len(content)):
+                char = content[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = i
+                            break
+            
+            if json_end != -1:
+                content = content[json_start:json_end + 1]
+            else:
+                # Fallback: remove markdown markers and try again
+                content = re.sub(r'```json\s*', '', content, flags=re.IGNORECASE)
+                content = re.sub(r'```\s*$', '', content, flags=re.MULTILINE)
+                # Try to find JSON again after cleaning
+                first_brace = content.find('{')
+                if first_brace != -1:
+                    last_brace = content.rfind('}')
+                    if last_brace > first_brace:
+                        content = content[first_brace:last_brace + 1]
     
     # Step 3: Find JSON object boundaries more carefully
     # Count braces to find the complete JSON object, respecting strings
@@ -98,6 +180,53 @@ def parse_llm_json_response(content: str, debug_file: Optional[str] = None) -> D
         result = []
         in_string = False
         escape_next = False
+        i = 0
+        while i < len(text):
+            char = text[i]
+            
+            if escape_next:
+                result.append(char)
+                escape_next = False
+                i += 1
+                continue
+            
+            if char == '\\':
+                result.append(char)
+                escape_next = True
+                i += 1
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                result.append(char)
+                i += 1
+                continue
+            
+            if not in_string:
+                # Check for trailing comma before } or ]
+                if char == ',':
+                    # Look ahead to see if next non-whitespace is } or ]
+                    j = i + 1
+                    while j < len(text) and text[j] in ' \t\n\r':
+                        j += 1
+                    if j < len(text) and text[j] in '}]':
+                        # Skip this comma (it's trailing)
+                        i += 1
+                        continue
+                elif char in '}]':
+                    # Before closing, check if there's a trailing comma before
+                    # Look backwards for comma
+                    k = len(result) - 1
+                    while k >= 0 and result[k] in ' \t\n\r':
+                        k -= 1
+                    if k >= 0 and result[k] == ',':
+                        # Remove the trailing comma
+                        result.pop(k)
+            
+            result.append(char)
+            i += 1
+        
+        return ''.join(result)
         i = 0
         
         while i < len(text):

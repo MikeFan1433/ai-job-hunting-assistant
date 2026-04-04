@@ -11,42 +11,36 @@ export default function BehavioralInterviewTab({ data }: Props) {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-3 mb-6">
-        <User className="w-6 h-6 text-primary-600" />
-        <h2 className="text-2xl font-bold text-gray-900">Behavioral Interview Preparation</h2>
-      </div>
-
-      {/* Self Introduction */}
       {data.self_introduction && (
         <div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <User className="w-5 h-5 text-primary-600" />
-            Self-Introduction
+          <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <User className="w-5 h-5 text-purple-400" />
+            自我介绍脚本 (30-45秒)
           </h3>
-          <div className="card bg-blue-50 border-blue-200">
+          <div className="rounded-xl bg-[#2B3037] border border-gray-600 p-4">
             {data.self_introduction.full_text ? (
-              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+              <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
                 {data.self_introduction.full_text}
               </p>
             ) : (
               <div className="space-y-3">
                 {data.self_introduction.paragraph_1 && (
-                  <p className="text-gray-700">{data.self_introduction.paragraph_1}</p>
+                  <p className="text-gray-300">{data.self_introduction.paragraph_1}</p>
                 )}
                 {data.self_introduction.paragraph_2 && (
-                  <p className="text-gray-700">{data.self_introduction.paragraph_2}</p>
+                  <p className="text-gray-300">{data.self_introduction.paragraph_2}</p>
                 )}
                 {data.self_introduction.paragraph_3 && (
-                  <p className="text-gray-700">{data.self_introduction.paragraph_3}</p>
+                  <p className="text-gray-300">{data.self_introduction.paragraph_3}</p>
                 )}
               </div>
             )}
             {data.self_introduction.key_highlights && data.self_introduction.key_highlights.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-blue-300">
-                <p className="text-sm font-semibold text-gray-900 mb-2">Key Highlights:</p>
+              <div className="mt-4 pt-4 border-t border-gray-600">
+                <p className="text-sm font-semibold text-white mb-2">Key Highlights:</p>
                 <ul className="space-y-1">
                   {data.self_introduction.key_highlights.map((highlight: string, index: number) => (
-                    <li key={index} className="text-sm text-gray-700">• {highlight}</li>
+                    <li key={index} className="text-sm text-gray-300">• {highlight}</li>
                   ))}
                 </ul>
               </div>
@@ -58,14 +52,14 @@ export default function BehavioralInterviewTab({ data }: Props) {
       {/* Storytelling Example */}
       {data.storytelling_example && (
         <div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-purple-400" />
             Storytelling Answer Template
           </h3>
-          <div className="card space-y-4">
+          <div className="rounded-xl bg-[#2B3037] border border-gray-600 p-4 space-y-4">
             {data.storytelling_example.full_storytelling_answer ? (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+              <div className="bg-gray-700/50 p-4 rounded-lg">
+                <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
                   {data.storytelling_example.full_storytelling_answer}
                 </p>
               </div>
@@ -73,38 +67,38 @@ export default function BehavioralInterviewTab({ data }: Props) {
               <div className="space-y-4">
                 {data.storytelling_example.hook && (
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Hook:</h4>
-                    <p className="text-gray-700 bg-yellow-50 p-3 rounded-lg">{data.storytelling_example.hook}</p>
+                    <h4 className="font-semibold text-white mb-2">Hook:</h4>
+                    <p className="text-gray-300 bg-yellow-50 p-3 rounded-lg">{data.storytelling_example.hook}</p>
                   </div>
                 )}
                 {data.storytelling_example.emergency && (
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Emergency:</h4>
-                    <p className="text-gray-700 bg-red-50 p-3 rounded-lg">{data.storytelling_example.emergency}</p>
+                    <h4 className="font-semibold text-white mb-2">Emergency:</h4>
+                    <p className="text-gray-300 bg-red-900/20 p-3 rounded-lg">{data.storytelling_example.emergency}</p>
                   </div>
                 )}
                 {data.storytelling_example.approach && (
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Approach:</h4>
-                    <p className="text-gray-700 bg-blue-50 p-3 rounded-lg">{data.storytelling_example.approach}</p>
+                    <h4 className="font-semibold text-white mb-2">Approach:</h4>
+                    <p className="text-gray-300 bg-blue-900/20 p-3 rounded-lg">{data.storytelling_example.approach}</p>
                   </div>
                 )}
                 {data.storytelling_example.action && (
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Action:</h4>
-                    <p className="text-gray-700 bg-green-50 p-3 rounded-lg">{data.storytelling_example.action}</p>
+                    <h4 className="font-semibold text-white mb-2">Action:</h4>
+                    <p className="text-gray-300 bg-green-50 p-3 rounded-lg">{data.storytelling_example.action}</p>
                   </div>
                 )}
                 {data.storytelling_example.impact && (
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Impact:</h4>
-                    <p className="text-gray-700 bg-purple-50 p-3 rounded-lg">{data.storytelling_example.impact}</p>
+                    <h4 className="font-semibold text-white mb-2">Impact:</h4>
+                    <p className="text-gray-300 bg-purple-50 p-3 rounded-lg">{data.storytelling_example.impact}</p>
                   </div>
                 )}
                 {data.storytelling_example.reflection && (
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Reflection:</h4>
-                    <p className="text-gray-700 bg-indigo-50 p-3 rounded-lg">{data.storytelling_example.reflection}</p>
+                    <h4 className="font-semibold text-white mb-2">Reflection:</h4>
+                    <p className="text-gray-300 bg-indigo-50 p-3 rounded-lg">{data.storytelling_example.reflection}</p>
                   </div>
                 )}
               </div>
@@ -116,21 +110,21 @@ export default function BehavioralInterviewTab({ data }: Props) {
       {/* Top 10 Behavioral Questions */}
       {data.top_10_behavioral_questions && data.top_10_behavioral_questions.length > 0 && (
         <div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <HelpCircle className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <HelpCircle className="w-5 h-5 text-purple-400" />
             Top 10 Behavioral Questions
           </h3>
           <div className="space-y-6">
             {data.top_10_behavioral_questions.map((question: any, index: number) => (
-              <div key={index} className="card border-l-4 border-primary-500">
+              <div key={index} className="rounded-xl bg-[#2B3037] border border-gray-600 p-4 border-l-4 border-primary-500">
                 <div className="flex items-start justify-between mb-3">
-                  <h4 className="text-lg font-semibold text-gray-900">
+                  <h4 className="text-lg font-semibold text-white">
                     {index + 1}. {question.question}
                   </h4>
                 </div>
 
                 {question.why_they_ask_this && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="mb-4 p-3 bg-blue-900/20 rounded-lg border border-blue-500/40">
                     <p className="text-sm font-semibold text-blue-900 mb-1">Why They Ask This:</p>
                     <p className="text-sm text-blue-800">{question.why_they_ask_this}</p>
                   </div>
@@ -138,9 +132,9 @@ export default function BehavioralInterviewTab({ data }: Props) {
 
                 {question.sample_answer && (
                   <div className="mb-4">
-                    <p className="text-sm font-semibold text-gray-900 mb-2">Sample Answer:</p>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    <p className="text-sm font-semibold text-white mb-2">Sample Answer:</p>
+                    <div className="bg-gray-700/50 p-4 rounded-lg">
+                      <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
                         {question.sample_answer}
                       </p>
                     </div>
@@ -149,11 +143,11 @@ export default function BehavioralInterviewTab({ data }: Props) {
 
                 {question.key_points_to_emphasize && question.key_points_to_emphasize.length > 0 && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 mb-2">Key Points to Emphasize:</p>
+                    <p className="text-sm font-semibold text-white mb-2">Key Points to Emphasize:</p>
                     <ul className="space-y-1">
                       {question.key_points_to_emphasize.map((point: string, pointIndex: number) => (
-                        <li key={pointIndex} className="text-sm text-gray-700 flex items-start gap-2">
-                          <span className="text-primary-600 mt-1">•</span>
+                        <li key={pointIndex} className="text-sm text-gray-300 flex items-start gap-2">
+                          <span className="text-purple-400 mt-1">•</span>
                           <span>{point}</span>
                         </li>
                       ))}

@@ -1,16 +1,62 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { workflowAPI } from '../services/api';
 import { Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { getUiStrings } from '../i18n/uiStrings';
+
+const STEP_ORDER = ['agent1', 'agent2', 'agent3', 'agent4', 'agent5'] as const;
+
+/** Backend still runs agent3; UI hides that row and keeps “step 2” active until agent4. */
+function stepIdForProgressDisplay(current: string): (typeof STEP_ORDER)[number] {
+  if (current === 'agent3') return 'agent2';
+  if (STEP_ORDER.includes(current as (typeof STEP_ORDER)[number])) {
+    return current as (typeof STEP_ORDER)[number];
+  }
+  return 'agent1';
+}
 
 export default function LoadingPage() {
   const navigate = useNavigate();
-  const { workflow, setWorkflow, incrementRetry, retry_count } = useAppStore();
-  const [, setPolling] = useState(true); // Used in useEffect and handleRetry
-  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const { workflow, setWorkflow, incrementRetry, retry_count, inputs } = useAppStore();
+  const ui = useMemo(() => getUiStrings(inputs.preferred_lang), [inputs.preferred_lang]);
+  const STEPS = useMemo(
+    () => [
+      { id: 'agent1', label: ui.loading.stepAgent1 },
+      { id: 'agent2', label: ui.loading.stepAgent2 },
+      { id: 'agent3', label: ui.loading.stepAgent3 },
+      { id: 'agent4', label: ui.loading.stepAgent4 },
+      { id: 'agent5', label: ui.loading.stepAgent5 },
+    ],
+    [ui]
+  );
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [stuckWarning, setStuckWarning] = useState(false);
+  const [backendNotActivated, setBackendNotActivated] = useState(false);
+  const [displayProgress, setDisplayProgress] = useState(0);
+  const targetProgressRef = useRef(0);
+  const animFrameRef = useRef<number>();
+
+  // Smooth progress animation: interpolate toward target
+  useEffect(() => {
+    const animate = () => {
+      setDisplayProgress((prev) => {
+        const target = targetProgressRef.current;
+        if (Math.abs(prev - target) < 0.5) return target;
+        return prev + (target - prev) * 0.08;
+      });
+      animFrameRef.current = requestAnimationFrame(animate);
+    };
+    animFrameRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, []);
+
+  // Sync target progress from workflow state
+  useEffect(() => {
+    targetProgressRef.current = workflow.progress ?? 0;
+  }, [workflow.progress]);
 
   useEffect(() => {
     if (!workflow.workflow_id) {
@@ -19,113 +65,116 @@ export default function LoadingPage() {
       return;
     }
 
-    console.log('LoadingPage: Starting progress tracking for workflow:', workflow.workflow_id);
+    const checkState = async () => {
+      try {
+        const currentState = await workflowAPI.getProgress(workflow.workflow_id!);
+        if ((currentState as any).workflow_found === false) {
+          setBackendNotActivated(true);
+        } else {
+          setBackendNotActivated(false);
+        }
+        const u2 = getUiStrings(useAppStore.getState().inputs.preferred_lang);
+        setWorkflow({
+          status: currentState.status,
+          current_step: currentState.current_step || 'agent1',
+          progress: currentState.progress ?? 0,
+          message: currentState.message || u2.loading.processing,
+          results: currentState.results || {},
+          error: currentState.error || null,
+        });
+        if (currentState.status === 'completed') {
+          navigate('/dashboard');
+          return;
+        }
+      } catch (error) {
+        console.warn('Error checking initial state:', error);
+      }
+    };
+    checkState();
 
-    // Start SSE stream for real-time updates with error handling
-    const cleanup = workflowAPI.streamProgress(
+    const stopTracking = workflowAPI.trackProgress(
       workflow.workflow_id!,
       (data) => {
-        console.log('LoadingPage: Progress update received:', data);
+        if ((data as any).workflow_found === false) {
+          setBackendNotActivated(true);
+        } else {
+          setBackendNotActivated(false);
+        }
         setLastUpdateTime(Date.now());
-        setConnectionError(null); // Clear error on successful update
         setStuckWarning(false);
-        
+        const u3 = getUiStrings(useAppStore.getState().inputs.preferred_lang);
         setWorkflow({
           status: data.status,
-          current_step: data.current_step,
-          progress: data.progress,
-          message: data.message,
+          current_step: data.current_step || 'agent1',
+          progress: data.progress ?? 0,
+          message: data.message || u3.loading.processing,
           results: data.results || {},
-          error: data.error,
+          error: data.error || null,
         });
-
-        // Navigate to dashboard when completed
         if (data.status === 'completed') {
-          console.log('LoadingPage: Workflow completed, navigating to dashboard');
-          setPolling(false);
-          setTimeout(() => {
-            navigate('/dashboard');
-          }, 1000);
-        }
-
-        // Handle failure
-        if (data.status === 'failed') {
-          console.error('LoadingPage: Workflow failed:', data.error);
-          setPolling(false);
+          navigate('/dashboard');
         }
       },
       (error) => {
-        // Handle connection errors
-        console.error('LoadingPage: Connection error:', error);
-        setConnectionError(error.message);
-        // Don't set status to failed, just show warning
-        // The polling fallback will continue trying
+        console.error('Tracking error:', error);
       }
     );
 
-    // Check for stuck workflow (no updates for 2 minutes)
     const stuckCheckInterval = setInterval(() => {
       const timeSinceLastUpdate = Date.now() - lastUpdateTime;
       if (timeSinceLastUpdate > 120000 && workflow.status === 'running') {
-        console.warn('LoadingPage: Workflow appears stuck, no updates for', Math.floor(timeSinceLastUpdate / 1000), 'seconds');
         setStuckWarning(true);
       }
-    }, 10000); // Check every 10 seconds
+    }, 10000);
 
     return () => {
-      console.log('LoadingPage: Cleaning up progress tracking');
-      cleanup();
+      stopTracking();
       clearInterval(stuckCheckInterval);
     };
-  }, [workflow.workflow_id, navigate, setWorkflow, lastUpdateTime, workflow.status]);
+  }, [workflow.workflow_id, navigate, setWorkflow, lastUpdateTime, workflow.status, inputs.preferred_lang]);
 
   const handleRetry = async () => {
+    const ru = getUiStrings(useAppStore.getState().inputs.preferred_lang);
     if (retry_count >= 3) {
-      alert('Maximum retry attempts reached. Please start over.');
+      alert(ru.loading.retryMax);
       navigate('/');
       return;
     }
-
     incrementRetry();
-    setPolling(true);
-    setWorkflow({ status: 'running', progress: 0, message: 'Retrying...' });
-
+    setWorkflow({ status: 'running', progress: 0, message: ru.loading.retrying });
     try {
       const { inputs } = useAppStore.getState();
+      const ru2 = getUiStrings(inputs.preferred_lang);
       const response = await workflowAPI.start({
+        job_title: inputs.job_title,
+        company_name: inputs.company_name,
+        country_or_region: inputs.country_or_region || undefined,
         jd_text: inputs.jd_text,
         resume_text: inputs.resume_text,
         projects_text: inputs.projects_text || undefined,
+        preferred_lang: inputs.preferred_lang,
       });
-
       setWorkflow({
         workflow_id: response.workflow_id,
         status: 'running',
         current_step: 'agent1',
         progress: 0,
-        message: 'Starting workflow...',
+        message: ru2.loading.starting,
         results: {},
         error: null,
       });
     } catch (error: any) {
+      const ruE = getUiStrings(useAppStore.getState().inputs.preferred_lang);
       setWorkflow({
         status: 'failed',
-        error: error.message || 'Failed to retry workflow',
+        error: error.message || ruE.loading.retryFailed,
       });
-      setPolling(false);
     }
   };
 
-  const getStepName = (step: string) => {
-    const steps: Record<string, string> = {
-      agent1: 'Input Validation',
-      agent2: 'JD Analysis',
-      agent3: 'Project Packaging',
-      agent4: 'Resume Optimization',
-      completed: 'Completed',
-    };
-    return steps[step] || step;
-  };
+  const visibleSteps = STEPS.filter((s) => s.id !== 'agent3');
+  const progressStepId = stepIdForProgressDisplay(workflow.current_step || 'agent1');
+  const progressOrderIndex = STEP_ORDER.indexOf(progressStepId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -146,95 +195,61 @@ export default function LoadingPage() {
 
           {/* Title */}
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {workflow.status === 'running' && 'Processing Your Request...'}
-            {workflow.status === 'completed' && 'Analysis Complete!'}
-            {workflow.status === 'failed' && 'Processing Failed'}
+            {workflow.status === 'running' && ui.loading.running}
+            {workflow.status === 'completed' && ui.loading.completed}
+            {workflow.status === 'failed' && ui.loading.failed}
           </h1>
-
-          {/* Current Step */}
-          {workflow.status === 'running' && (
-            <p className="text-lg text-gray-600 mb-6">
-              {getStepName(workflow.current_step)}
-            </p>
-          )}
 
           {/* Progress Bar */}
           {workflow.status === 'running' && (
-            <div className="mb-6">
-              <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+            <div className="mb-6 mt-4">
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
                 <div
-                  className="bg-primary-600 h-3 rounded-full transition-all duration-300"
-                  style={{ width: `${workflow.progress}%` }}
+                  className="bg-gradient-to-r from-primary-500 to-primary-600 h-3 rounded-full transition-none"
+                  style={{ width: `${Math.min(displayProgress, 100)}%` }}
                 />
               </div>
-              <p className="text-sm text-gray-600">{workflow.progress}%</p>
+              <p className="text-sm text-gray-500">{Math.round(displayProgress)}%</p>
             </div>
           )}
 
           {/* Message */}
-          <p className="text-gray-700 mb-6">{workflow.message || 'Processing...'}</p>
+          <p className="text-gray-700 mb-6">{workflow.message || ui.loading.processing}</p>
+
+          {/* Backend not activated */}
+          {backendNotActivated && workflow.status === 'running' && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-6 text-left">
+              <p className="text-amber-900 font-semibold mb-2">⚠️ {ui.loading.backendWarnTitle}</p>
+              <p className="text-amber-800 text-sm mb-3">{ui.loading.backendWarnBody}</p>
+              <button
+                onClick={() => navigate('/')}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700"
+              >
+                {ui.loading.backendWarnBtn}
+              </button>
+            </div>
+          )}
 
           {/* Stuck Warning */}
-          {stuckWarning && workflow.status === 'running' && (
+          {stuckWarning && workflow.status === 'running' && !backendNotActivated && (
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 text-left">
-              <p className="text-orange-800 font-semibold mb-2">⚠️ 工作流可能卡住了</p>
-              <p className="text-orange-700 text-sm mb-3">
-                工作流似乎没有更新。这可能是正常的（处理需要时间），但如果等待时间过长，请尝试刷新页面或重新开始。
-              </p>
+              <p className="text-orange-800 font-semibold mb-2">⚠️ {ui.loading.stuckTitle}</p>
+              <p className="text-orange-700 text-sm mb-3">{ui.loading.stuckBody}</p>
               <div className="flex gap-2">
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700"
-                >
-                  刷新页面
+                <button onClick={() => window.location.reload()} className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700">
+                  {ui.loading.refresh}
                 </button>
-                <button
-                  onClick={() => navigate('/')}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300"
-                >
-                  重新开始
+                <button onClick={() => navigate('/')} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300">
+                  {ui.loading.restart}
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Connection Warning - Only show if it's a real error, not SSE fallback */}
-          {connectionError && 
-           workflow.status === 'running' && 
-           !connectionError.includes('SSE') && 
-           !connectionError.includes('polling') && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-left">
-              <p className="text-yellow-800 font-semibold mb-2">⚠️ Connection Warning:</p>
-              <p className="text-yellow-700 text-sm">{connectionError}</p>
-              <p className="text-yellow-600 text-xs mt-2">Using fallback connection method...</p>
-            </div>
-          )}
-
-          {/* Debug Info (only in development) */}
-          {import.meta.env.DEV && workflow.workflow_id && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6 text-left text-xs">
-              <p className="font-semibold mb-1">Debug Info:</p>
-              <p>Workflow ID: {workflow.workflow_id}</p>
-              <p>Status: {workflow.status}</p>
-              <p>Step: {workflow.current_step}</p>
-              <p>Progress: {workflow.progress}%</p>
-              <p className="mt-2">
-                <a 
-                  href={`http://localhost:8000/api/v1/workflow/progress/${workflow.workflow_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
-                >
-                  查看 API 响应 →
-                </a>
-              </p>
             </div>
           )}
 
           {/* Error Display */}
           {workflow.status === 'failed' && workflow.error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-left">
-              <p className="text-red-800 font-semibold mb-2">Error:</p>
+              <p className="text-red-800 font-semibold mb-2">{ui.loading.errorLabel}</p>
               <p className="text-red-700">{workflow.error}</p>
             </div>
           )}
@@ -248,43 +263,48 @@ export default function LoadingPage() {
                 className="btn btn-primary flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw className="w-5 h-5" />
-                {retry_count >= 3 ? 'Max Retries Reached' : `Retry (${retry_count}/3)`}
+                {ui.loading.retryBtn(retry_count, 3)}
               </button>
-              {retry_count >= 3 && (
-                <p className="text-sm text-gray-600">
-                  Maximum retry attempts reached. Please start over.
-                </p>
-              )}
             </div>
           )}
 
           {/* Steps Progress */}
           {workflow.status === 'running' && (
             <div className="mt-8 space-y-3">
-              {['agent1', 'agent2', 'agent3', 'agent4'].map((step, index) => {
-                const isActive = workflow.current_step === step;
-                const isCompleted = ['agent2', 'agent3', 'agent4'].indexOf(workflow.current_step) > index;
-                
+              {visibleSteps.map((step, visibleIndex) => {
+                const orderIdx = STEP_ORDER.indexOf(step.id as (typeof STEP_ORDER)[number]);
+                const isActive =
+                  workflow.current_step === step.id ||
+                  (workflow.current_step === 'agent3' && step.id === 'agent2');
+                const isCompleted =
+                  workflow.current_step === 'completed' ||
+                  (progressOrderIndex >= 0 && orderIdx >= 0 && progressOrderIndex > orderIdx);
+
                 return (
-                  <div key={step} className="flex items-center gap-3">
+                  <div key={step.id} className="flex items-center gap-3">
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors duration-300 ${
                         isCompleted
                           ? 'bg-green-600 text-white'
                           : isActive
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-gray-200 text-gray-600'
+                          ? 'bg-primary-600 text-white animate-pulse'
+                          : 'bg-gray-200 text-gray-500'
                       }`}
                     >
-                      {isCompleted ? '✓' : index + 1}
+                      {isCompleted ? '✓' : visibleIndex + 1}
                     </div>
                     <span
-                      className={`${
-                        isActive ? 'text-primary-600 font-semibold' : 'text-gray-600'
+                      className={`text-sm ${
+                        isActive
+                          ? 'text-primary-700 font-semibold'
+                          : isCompleted
+                          ? 'text-green-700'
+                          : 'text-gray-400'
                       }`}
                     >
-                      {getStepName(step)}
+                      {step.label}
                     </span>
+                    {isActive && <Loader2 className="w-4 h-4 text-primary-500 animate-spin" />}
                   </div>
                 );
               })}

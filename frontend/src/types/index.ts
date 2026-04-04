@@ -11,6 +11,7 @@ export interface WorkflowState {
     agent2?: any;
     agent3?: any;
     agent4?: any;
+    agent5?: any;
   };
   error: string | null;
 }
@@ -25,9 +26,13 @@ export interface InterviewState {
 }
 
 export interface UserInputs {
+  job_title: string;
+  company_name: string;
+  country_or_region: string;
   jd_text: string;
   resume_text: string;
   projects_text: string;
+  preferred_lang: 'en' | 'zh';
 }
 
 export interface FeedbackItem {

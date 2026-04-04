@@ -242,14 +242,130 @@ class ResumeOptimizationService:
         # Get classified projects with full details for output
         classified_projects = self.get_classified_projects_for_interview()
         
+        # Extract optimized work experiences (bullet points) from final resume
+        optimized_work_experiences = self._extract_work_experiences(final_resume)
+        
+        # Get optimized project documents (only projects adopted into resume)
+        optimized_project_documents = self._get_optimized_project_documents(classified_projects)
+        
         return {
-            "final_resume": final_resume,  # 1. 最终优化后的简历
+            "final_resume": final_resume,  # 1. 最终优化后的简历（完整格式）
             "classified_projects": classified_projects,  # 2. 经过采纳分类后的项目文本（包含完整项目详情）
+            "optimized_work_experiences": optimized_work_experiences,  # 3. 优化后简历中的工作经历（bullet points）
+            "optimized_project_documents": optimized_project_documents,  # 4. 经过Agent 3优化的完整项目文档（被选为放入简历中的项目）
             "modifications_applied": modifications_applied,
             "total_modifications": len(modifications_applied),
             "summary": self._generate_modification_summary(modifications_applied),
             "project_classification": updated_classification  # 分类摘要（索引和名称）
         }
+    
+    def _extract_work_experiences(self, resume_text: str) -> List[Dict]:
+        """
+        Extract work experiences with bullet points from the final optimized resume.
+        
+        Args:
+            resume_text: Final optimized resume text
+        
+        Returns:
+            List of work experience dictionaries with title, company, duration, and bullet points
+        """
+        work_experiences = []
+        
+        # Split resume into lines
+        lines = resume_text.split('\n')
+        current_experience = None
+        current_bullets = []
+        in_work_experience_section = False
+        
+        for i, line in enumerate(lines):
+            line_stripped = line.strip()
+            
+            # Detect WORK EXPERIENCE section
+            if re.search(r'WORK\s+EXPERIENCE|EXPERIENCE|EMPLOYMENT', line_stripped, re.IGNORECASE):
+                in_work_experience_section = True
+                continue
+            
+            # Stop at other major sections
+            if in_work_experience_section and re.search(r'^(EDUCATION|SKILLS|PROJECTS|CERTIFICATIONS)', line_stripped, re.IGNORECASE):
+                # Save last experience before stopping
+                if current_experience:
+                    current_experience['bullet_points'] = current_bullets
+                    work_experiences.append(current_experience)
+                break
+            
+            if not in_work_experience_section:
+                continue
+            
+            # Check if this is a title/company line (contains job title keywords and company indicators)
+            if (re.search(r'(Senior|Junior|Manager|Director|Lead|Engineer|Scientist|Analyst|Developer|Designer|Specialist|Coordinator|Associate|Executive)', line_stripped, re.IGNORECASE) and
+                (',' in line_stripped or '|' in line_stripped or 'at' in line_stripped.lower() or '@' in line_stripped)):
+                # Save previous experience if exists
+                if current_experience:
+                    current_experience['bullet_points'] = current_bullets
+                    work_experiences.append(current_experience)
+                
+                # Parse title, company, duration
+                parts = re.split(r'[|,]', line_stripped, 2)
+                title = parts[0].strip() if len(parts) > 0 else ''
+                company = parts[1].strip() if len(parts) > 1 else ''
+                duration = parts[2].strip() if len(parts) > 2 else ''
+                
+                # Start new experience
+                current_experience = {
+                    'title': title,
+                    'company': company,
+                    'duration': duration,
+                    'bullet_points': []
+                }
+                current_bullets = []
+            
+            # Check if this is a bullet point
+            elif line_stripped.startswith(('•', '-', '*', '·')) or re.match(r'^\d+\.', line_stripped):
+                bullet_text = re.sub(r'^[•\-\*·]\s*|\d+\.\s*', '', line_stripped).strip()
+                if bullet_text and current_experience:
+                    current_bullets.append(bullet_text)
+            
+            # Check if this is a duration line (dates)
+            elif current_experience and re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec).*?\d{4}', line_stripped, re.IGNORECASE):
+                if not current_experience.get('duration'):
+                    current_experience['duration'] = line_stripped
+        
+        # Save last experience
+        if current_experience:
+            current_experience['bullet_points'] = current_bullets
+            work_experiences.append(current_experience)
+        
+        return work_experiences
+    
+    def _get_optimized_project_documents(self, classified_projects: Dict) -> List[Dict]:
+        """
+        Get optimized project documents for projects adopted into resume.
+        
+        Args:
+            classified_projects: Dictionary with resume_adopted_projects and resume_not_adopted_projects
+        
+        Returns:
+            List of optimized project documents (only resume_adopted_projects)
+        """
+        adopted_projects = classified_projects.get("resume_adopted_projects", [])
+        
+        # Return full project documents with all details from Agent 3
+        optimized_documents = []
+        for project in adopted_projects:
+            # Include all project details from Agent 3 output
+            project_doc = {
+                "project_index": project.get("project_index"),
+                "project_name": project.get("project_name", ""),
+                "optimized_text": project.get("optimized_text", ""),
+                "rewritten_with_gaps": project.get("rewritten_with_gaps", {}),
+                "optimized_version": project.get("optimized_version", {}),
+                "relevance_reason": project.get("relevance_reason", ""),
+                "key_highlights": project.get("key_highlights", []),
+                "full_project_details": project  # Include all details
+            }
+            optimized_documents.append(project_doc)
+        
+        return optimized_documents
     
     def _apply_experience_replacement(
         self,
@@ -259,6 +375,9 @@ class ResumeOptimizationService:
     ) -> Dict:
         """
         Apply an experience replacement to the resume.
+        
+        IMPORTANT: This method now adds bullet points from optimized projects to existing work experiences,
+        rather than replacing entire work experience entries.
         
         Args:
             resume: Current resume text
@@ -271,71 +390,96 @@ class ResumeOptimizationService:
         experience_to_replace = replacement.get("experience_to_replace", {})
         replacement_instructions = replacement.get("replacement_instructions", {})
         
-        # Find the experience in the resume
+        # Find the target experience entry in the resume
         title = experience_to_replace.get("title", "")
         company = experience_to_replace.get("company", "")
         duration = experience_to_replace.get("duration", "")
         current_description = experience_to_replace.get("current_description", [])
         
-        # Build search pattern to find the entire experience block
-        # Look for title, company, duration, and description
-        pattern_parts = []
-        if title:
-            pattern_parts.append(re.escape(title))
-        if company:
-            pattern_parts.append(re.escape(company))
+        # Get new bullets to add (from optimized project)
+        new_bullets = replacement_instructions.get("new_bullets", [])
+        bullets_to_remove = replacement_instructions.get("bullets_to_remove", [])  # Optional: bullets to remove
         
-        # Build the full experience block pattern
-        experience_block_pattern = self._build_experience_block_pattern(
+        if not new_bullets:
+            # Fallback: if no new_bullets, return unchanged
+            return {
+                "updated_resume": resume,
+                "modification": {
+                    "type": "experience_replacement",
+                    "original": f"{title} at {company}",
+                    "replaced_with": "No bullets provided",
+                    "notes": "No new bullets to add"
+                }
+            }
+        
+        # Find the experience entry in the resume
+        # Look for the experience block (title, company, duration, and bullet points)
+        experience_pattern = self._build_experience_block_pattern(
             title, company, duration, current_description
         )
         
-        # Build replacement text
-        # Use resume_experience_description if available, otherwise build from new_bullets
-        resume_experience_desc = replacement_instructions.get("resume_experience_description", "")
-        new_title = replacement_instructions.get("new_title", title)
+        if not experience_pattern:
+            # Try to find by title and company only
+            if title and company:
+                experience_pattern = re.compile(
+                    rf"({re.escape(title)}[^\n]*{re.escape(company)}[^\n]*\n.*?)(?=\n[A-Z][^\n]*[^\n]*\n|$)",
+                    re.DOTALL | re.MULTILINE
+                )
         
-        if resume_experience_desc:
-            # Use the provided resume experience description
-            if company and duration:
-                header = f"{new_title} | {company} | {duration}"
-            elif company:
-                header = f"{new_title} | {company}"
-            else:
-                header = new_title
+        if experience_pattern:
+            def replace_experience(match):
+                experience_block = match.group(0)
+                
+                # Remove specified bullets if any
+                if bullets_to_remove:
+                    for bullet_to_remove in bullets_to_remove:
+                        # Remove the bullet point (handle various formats: •, -, *, etc.)
+                        bullet_pattern = re.compile(
+                            rf"[•\-\*]\s*{re.escape(bullet_to_remove)}",
+                            re.IGNORECASE | re.MULTILINE
+                        )
+                        experience_block = bullet_pattern.sub("", experience_block)
+                
+                # Add new bullets
+                # Find where to insert (after existing bullets, before next section)
+                # Look for the last bullet point in the experience block
+                bullet_markers = [r"•", r"-", r"\*", r"\d+\.", r"[A-Z]\.", r"[a-z]\)"]
+                last_bullet_pos = -1
+                for marker in bullet_markers:
+                    pattern = re.compile(rf"{marker}\s+[^\n]+", re.MULTILINE)
+                    matches = list(pattern.finditer(experience_block))
+                    if matches:
+                        last_match = matches[-1]
+                        if last_match.end() > last_bullet_pos:
+                            last_bullet_pos = last_match.end()
+                
+                # Insert new bullets
+                if last_bullet_pos > 0:
+                    # Insert after last bullet
+                    new_bullets_text = "\n".join([f"• {bullet}" for bullet in new_bullets])
+                    experience_block = (
+                        experience_block[:last_bullet_pos] +
+                        "\n" + new_bullets_text +
+                        experience_block[last_bullet_pos:]
+                    )
+                else:
+                    # No existing bullets found, append at end of experience block
+                    new_bullets_text = "\n".join([f"• {bullet}" for bullet in new_bullets])
+                    experience_block = experience_block.rstrip() + "\n" + new_bullets_text
+                
+                return experience_block
             
-            replacement_text = f"{header}\n\n{resume_experience_desc}"
+            updated_resume = experience_pattern.sub(replace_experience, resume)
         else:
-            # Fallback: build from new_bullets
-            new_bullets = replacement_instructions.get("new_bullets", [])
-            replacement_text = self._build_experience_text(
-                new_title,
-                company,
-                duration,
-                new_bullets
-            )
-        
-        # Apply replacement
-        if experience_block_pattern:
-            updated_resume = re.sub(
-                experience_block_pattern,
-                replacement_text,
-                resume,
-                flags=re.DOTALL | re.MULTILINE
-            )
-        else:
-            # Fallback: try simpler pattern
-            if pattern_parts:
-                simple_pattern = r"(" + "|".join(pattern_parts) + r")[^\n]*\n.*?(?=\n[A-Z]|\n\n|$)"
-                updated_resume = re.sub(simple_pattern, replacement_text, resume, flags=re.DOTALL)
-            else:
-                # Last resort: append if not found
-                updated_resume = resume + "\n\n" + replacement_text
+            # If experience not found, try to append to a relevant section
+            # This is a fallback - ideally the experience should be found
+            new_bullets_text = "\n".join([f"• {bullet}" for bullet in new_bullets])
+            updated_resume = resume + "\n\n" + new_bullets_text
         
         modification = {
             "type": "experience_replacement",
             "original": f"{title} at {company}",
-            "replaced_with": new_title,
+            "replaced_with": f"Added {len(new_bullets)} bullet points to {title} at {company}",
             "notes": additional_notes
         }
         
@@ -777,6 +921,31 @@ class ResumeOptimizationService:
         entry_index = entry.get("entry_index", 0)
         
         return f"{title}_{company}_{entry_index}"
+
+    def get_bullet_for_item(self, feedback_type: str, item_id: str) -> Optional[Dict]:
+        """Get the bullet_point dict for the given item_id (format_adjustment only). Returns None if not found."""
+        if feedback_type != "format_adjustment" or not self.optimization_recommendations:
+            return None
+        for adjustment_group in self.optimization_recommendations.get("format_content_adjustments", []):
+            entry_id = self._get_entry_id(adjustment_group)
+            for adj_idx, adjustment in enumerate(adjustment_group.get("adjustments", [])):
+                if f"adjustment_{entry_id}_{adj_idx}" == item_id:
+                    return adjustment.get("bullet_point")
+        return None
+
+    def set_suggested_for_item(self, feedback_type: str, item_id: str, new_suggested: str) -> bool:
+        """Update the suggested text for the given item (format_adjustment only). Returns True if updated."""
+        if feedback_type != "format_adjustment" or not self.optimization_recommendations:
+            return False
+        for adjustment_group in self.optimization_recommendations.get("format_content_adjustments", []):
+            entry_id = self._get_entry_id(adjustment_group)
+            for adj_idx, adjustment in enumerate(adjustment_group.get("adjustments", [])):
+                if f"adjustment_{entry_id}_{adj_idx}" == item_id:
+                    bullet = adjustment.get("bullet_point")
+                    if bullet is not None:
+                        bullet["suggested"] = new_suggested
+                        return True
+        return False
     
     def _generate_modification_summary(self, modifications: List[Dict]) -> Dict:
         """Generate summary of all modifications applied."""

@@ -19,9 +19,13 @@ interface AppStore extends AppState {
 
 const initialState: AppState = {
   inputs: {
+    job_title: '',
+    company_name: '',
+    country_or_region: '',
     jd_text: '',
     resume_text: '',
     projects_text: '',
+    preferred_lang: 'en',
   },
   workflow: {
     workflow_id: null,
@@ -50,7 +54,21 @@ const loadFromStorage = (): Partial<AppState> => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Clear user inputs on app start, but keep workflow/interview state
+      // This ensures fresh start for new inputs while preserving completed workflows
+      return {
+        ...parsed,
+        inputs: {
+          job_title: '',
+          company_name: '',
+          country_or_region: '',
+          jd_text: '',
+          resume_text: '',
+          projects_text: '',
+          preferred_lang: (parsed.inputs as any)?.preferred_lang || 'en',
+        },
+      };
     }
   } catch (error) {
     console.error('Error loading from storage:', error);
