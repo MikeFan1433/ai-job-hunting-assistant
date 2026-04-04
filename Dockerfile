@@ -45,4 +45,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Start server using PORT environment variable
 # Use shell form (sh -c) to ensure environment variable expansion works correctly
 # Critical: PORT is set by Koyeb at runtime, default to 8000 if not set
-CMD sh -c "gunicorn workflow_api:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 300 --access-logfile - --error-logfile -"
+# Single worker: workflow_state / workflow_results are in-process only; multiple workers break progress polling (Koyeb + Gunicorn).
+CMD sh -c "gunicorn workflow_api:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 300 --access-logfile - --error-logfile -"

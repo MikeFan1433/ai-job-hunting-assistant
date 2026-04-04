@@ -30,7 +30,7 @@ export default function LoadingPage() {
     ],
     [ui]
   );
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
+  const lastProgressAtRef = useRef<number>(Date.now());
   const [stuckWarning, setStuckWarning] = useState(false);
   const [backendNotActivated, setBackendNotActivated] = useState(false);
   const [displayProgress, setDisplayProgress] = useState(0);
@@ -74,6 +74,7 @@ export default function LoadingPage() {
           setBackendNotActivated(false);
         }
         const u2 = getUiStrings(useAppStore.getState().inputs.preferred_lang);
+        lastProgressAtRef.current = Date.now();
         setWorkflow({
           status: currentState.status,
           current_step: currentState.current_step || 'agent1',
@@ -100,7 +101,7 @@ export default function LoadingPage() {
         } else {
           setBackendNotActivated(false);
         }
-        setLastUpdateTime(Date.now());
+        lastProgressAtRef.current = Date.now();
         setStuckWarning(false);
         const u3 = getUiStrings(useAppStore.getState().inputs.preferred_lang);
         setWorkflow({
@@ -121,8 +122,9 @@ export default function LoadingPage() {
     );
 
     const stuckCheckInterval = setInterval(() => {
-      const timeSinceLastUpdate = Date.now() - lastUpdateTime;
-      if (timeSinceLastUpdate > 120000 && workflow.status === 'running') {
+      const { workflow: w } = useAppStore.getState();
+      const timeSinceLastUpdate = Date.now() - lastProgressAtRef.current;
+      if (timeSinceLastUpdate > 120000 && w.status === 'running') {
         setStuckWarning(true);
       }
     }, 10000);
@@ -131,7 +133,7 @@ export default function LoadingPage() {
       stopTracking();
       clearInterval(stuckCheckInterval);
     };
-  }, [workflow.workflow_id, navigate, setWorkflow, lastUpdateTime, workflow.status, inputs.preferred_lang]);
+  }, [workflow.workflow_id, navigate, setWorkflow, inputs.preferred_lang]);
 
   const handleRetry = async () => {
     const ru = getUiStrings(useAppStore.getState().inputs.preferred_lang);
