@@ -171,6 +171,7 @@ const EN = {
     exportTitle: 'Export',
     exportPdf: 'Resume PDF',
     exportDocx: 'Resume DOCX',
+    exportPreparing: 'Preparing file…',
     editKindRewrite: 'rewrite',
     editKindTighten: 'tighten',
     modalTitle: 'Modify suggestion',
@@ -222,6 +223,8 @@ const EN = {
     countTechnical: 'Technical depth',
     focusAreas: 'Focus areas:',
     bestStory: 'Strongest story to tell:',
+    exportFullPdf: 'Full prep (PDF)',
+    exportFullPdfBusy: 'Preparing PDF…',
   },
 };
 
@@ -388,6 +391,7 @@ const ZH = {
     exportTitle: '导出文件',
     exportPdf: '简历 PDF',
     exportDocx: '简历 DOCX',
+    exportPreparing: '正在准备文件…',
     editKindRewrite: '改写',
     editKindTighten: '精炼',
     modalTitle: '按说明重新生成',
@@ -439,5 +443,7 @@ const ZH = {
     countTechnical: '故事追问',
     focusAreas: '重点准备方向：',
     bestStory: '最强经历故事：',
+    exportFullPdf: '下载全部面试准备 (PDF)',
+    exportFullPdfBusy: '正在生成 PDF…',
   },
 };

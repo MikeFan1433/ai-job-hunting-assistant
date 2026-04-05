@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { MessageSquare, User, FolderOpen, Briefcase, ChevronDown, ChevronUp, Loader2, FileEdit } from 'lucide-react';
+import { MessageSquare, User, FolderOpen, Briefcase, ChevronDown, ChevronUp, Loader2, FileEdit, Download } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { getUiStrings } from '../../i18n/uiStrings';
+import { resumeAPI } from '../../services/api';
+import { buildInterviewPrepFullExportText } from '../../utils/interviewPrepFullText';
 
 interface Props {
   data: any;
@@ -13,6 +15,7 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
   const lang = useAppStore((s) => s.inputs.preferred_lang);
   const ui = getUiStrings(lang);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [fullPdfBusy, setFullPdfBusy] = useState(false);
 
   // State 1: Before confirmation — guide user to complete resume review first
   if (!confirmedModifications && !data) {
@@ -67,6 +70,34 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
     });
   };
 
+  const downloadFullPrepPdf = async () => {
+    const text = buildInterviewPrepFullExportText(data, ui);
+    if (!text.trim()) {
+      alert(ui.interview.unavailable);
+      return;
+    }
+    setFullPdfBusy(true);
+    try {
+      await resumeAPI.exportInterviewPrepFullPdf(text, 'Interview_Prep_Full');
+    } catch (e: any) {
+      alert(`${ui.dashboard.exportErr} ${e?.message || e}`);
+    } finally {
+      setFullPdfBusy(false);
+    }
+  };
+
+  const fullPrepPdfButton = (
+    <button
+      type="button"
+      disabled={fullPdfBusy}
+      onClick={downloadFullPrepPdf}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-purple-200 bg-white text-purple-800 hover:bg-purple-50 disabled:opacity-60 disabled:cursor-wait shrink-0"
+    >
+      {fullPdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+      {fullPdfBusy ? ui.interview.exportFullPdfBusy : ui.interview.exportFullPdf}
+    </button>
+  );
+
   const behavioral = data.theme_1_behavioral_interview || {};
   const projectDeepDive = data.theme_2_project_deep_dive || {};
   const businessDomain = data.theme_3_business_domain || {};
@@ -78,15 +109,21 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
   const projects = projectDeepDive.selected_projects || [];
   const businessQs = businessDomain.business_questions || [];
 
+  const hasSelfIntroBlock = Boolean(selfIntro.full_text || selfIntro.paragraph_1);
+
   return (
     <div className="space-y-8">
+      {!hasSelfIntroBlock && <div className="flex justify-end">{fullPrepPdfButton}</div>}
       {/* Self Introduction */}
       {(selfIntro.full_text || selfIntro.paragraph_1) && (
         <section>
-          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <User className="w-5 h-5 text-purple-600" />
-            {ui.interview.selfIntro}
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <User className="w-5 h-5 text-purple-600" />
+              {ui.interview.selfIntro}
+            </h3>
+            {fullPrepPdfButton}
+          </div>
           <div className="card bg-purple-50 border-purple-200">
             <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">
               {selfIntro.full_text || [selfIntro.paragraph_1, selfIntro.paragraph_2, selfIntro.paragraph_3].filter(Boolean).join('\n\n')}

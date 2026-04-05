@@ -8,8 +8,10 @@ from typing import Dict, Optional, List
 import json
 import asyncio
 from datetime import datetime
+import io
 import os
 import logging
+import re
 from pdf_parser import extract_text_from_pdf, validate_pdf
 
 # Configure logging
@@ -175,6 +177,16 @@ class ExportRequest(BaseModel):
     """Request model for resume export."""
     format: str = "pdf"  # "pdf" or "docx"
     title: str = "Resume"
+
+
+class ExportTextDocumentRequest(BaseModel):
+    """Export arbitrary plain text to PDF (e.g. full interview prep from client-built text)."""
+    title: str = "Interview_Prep"
+    text: str
+    format: str = "pdf"
+
+
+MAX_TEXT_DOCUMENT_EXPORT_CHARS = 600_000
 
 
 def _regenerate_bullet_suggestion(original: str, suggested: str, user_instruction: str, jd_snippet: str) -> str:
@@ -990,31 +1002,68 @@ async def get_interview_result(interview_id: str) -> Dict:
 # Export Endpoints
 # ============================================================================
 
+def _safe_download_filename(name: str, ext: str) -> str:
+    base = re.sub(r"[^\w\-.]+", "_", (name or "export").strip())[:120]
+    return f"{base or 'export'}.{ext}"
+
+
 @app.post("/api/v1/resume/export")
 async def export_resume(request: ExportRequest):
-    """Export final resume to PDF or DOCX. Returns file attachment."""
+    """Export final resume to PDF or DOCX. Returns file bytes (no temp file on disk)."""
     try:
         if not optimization_service.final_resume:
             raise HTTPException(status_code=400, detail="Final resume not available")
-        os.makedirs("data/resumes", exist_ok=True)
-        output_path = f"data/resumes/final_resume_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{request.format}"
-        result = exporter.export(
-            resume_text=optimization_service.final_resume,
-            output_path=output_path,
-            format=request.format,
-            title=request.title
-        )
+        fmt = (request.format or "pdf").lower()
+        title = request.title or "Resume"
+        if fmt == "pdf":
+            result = exporter.export_plain_text_pdf_bytes(optimization_service.final_resume, title)
+        elif fmt == "docx":
+            result = exporter.export_plain_text_docx_bytes(optimization_service.final_resume, title)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported format; use pdf or docx")
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
-        return FileResponse(
-            output_path,
-            filename=f"{request.title}.{request.format}",
-            media_type="application/pdf" if request.format == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        fname = _safe_download_filename(title, fmt)
+        media = (
+            "application/pdf"
+            if fmt == "pdf"
+            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        return StreamingResponse(
+            io.BytesIO(result["data"]),
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error exporting resume: {str(e)}")
+
+
+@app.post("/api/v1/export/text-document")
+async def export_text_document(request: ExportTextDocumentRequest):
+    """Export client-provided plain text as PDF (full interview prep, etc.)."""
+    try:
+        fmt = (request.format or "pdf").lower()
+        if fmt != "pdf":
+            raise HTTPException(status_code=400, detail="Only pdf is supported for text-document export")
+        text = request.text or ""
+        if len(text) > MAX_TEXT_DOCUMENT_EXPORT_CHARS:
+            raise HTTPException(status_code=400, detail="Content too large for export")
+        title = request.title or "Interview_Prep"
+        result = exporter.export_plain_text_pdf_bytes(text, title)
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        fname = _safe_download_filename(title, "pdf")
+        return StreamingResponse(
+            io.BytesIO(result["data"]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error exporting document: {str(e)}")
 
 
 class ExportProjectsRequest(BaseModel):

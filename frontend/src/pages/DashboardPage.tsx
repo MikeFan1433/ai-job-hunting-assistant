@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [userFeedback, setUserFeedback] = useState<Record<string, string>>({});
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
   const [confirmedModifications, setConfirmedModifications] = useState(false);
+  const [exportingResumeFormat, setExportingResumeFormat] = useState<'pdf' | 'docx' | null>(null);
 
   useEffect(() => {
     if (workflow.status !== 'completed') {
@@ -141,10 +142,13 @@ export default function DashboardPage() {
   };
 
   const handleExportResume = async (format: 'pdf' | 'docx') => {
+    setExportingResumeFormat(format);
     try {
       await resumeAPI.export(format, 'Resume');
     } catch (error: any) {
       alert(`${ui.dashboard.exportErr} ${error.message}`);
+    } finally {
+      setExportingResumeFormat(null);
     }
   };
 
@@ -178,6 +182,7 @@ export default function DashboardPage() {
             onFeedbackUpdate={loadFeedbackStatus}
             feedbackStatus={feedbackStatus}
             onExportResume={handleExportResume}
+            exportingResumeFormat={exportingResumeFormat}
             hasFinalResume={Boolean(generatedResume || finalResumeFromStore)}
             onConfirmModifications={handleConfirmModifications}
             generatingResume={generatingResume}

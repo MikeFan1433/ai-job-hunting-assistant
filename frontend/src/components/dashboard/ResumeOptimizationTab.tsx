@@ -69,6 +69,7 @@ interface Props {
   onFeedbackUpdate: () => void;
   feedbackStatus: any;
   onExportResume?: (format: 'pdf' | 'docx') => void;
+  exportingResumeFormat?: 'pdf' | 'docx' | null;
   hasFinalResume?: boolean;
   onConfirmModifications?: (feedbackMap: Record<string, { action: string; text?: string }>) => void;
   generatingResume?: boolean;
@@ -84,6 +85,7 @@ interface Props {
 export default function ResumeOptimizationTab({
   workflowId, data, onFeedbackUpdate,
   onExportResume,
+  exportingResumeFormat,
   hasFinalResume,
   onConfirmModifications, generatingResume, preparingInterview, generatedResume,
   confirmedModifications,
@@ -927,11 +929,31 @@ export default function ResumeOptimizationTab({
             <h3 className="text-lg font-semibold text-gray-900">{ui.resume.exportTitle}</h3>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => onExportResume('pdf')} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-              <Download className="w-4 h-4" /> {ui.resume.exportPdf}
+            <button
+              type="button"
+              disabled={!!exportingResumeFormat}
+              onClick={() => onExportResume('pdf')}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {exportingResumeFormat === 'pdf' ? (
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              ) : (
+                <Download className="w-4 h-4 shrink-0" />
+              )}
+              {exportingResumeFormat === 'pdf' ? ui.resume.exportPreparing : ui.resume.exportPdf}
             </button>
-            <button onClick={() => onExportResume('docx')} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-              <Download className="w-4 h-4" /> {ui.resume.exportDocx}
+            <button
+              type="button"
+              disabled={!!exportingResumeFormat}
+              onClick={() => onExportResume('docx')}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {exportingResumeFormat === 'docx' ? (
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              ) : (
+                <Download className="w-4 h-4 shrink-0" />
+              )}
+              {exportingResumeFormat === 'docx' ? ui.resume.exportPreparing : ui.resume.exportDocx}
             </button>
           </div>
         </div>

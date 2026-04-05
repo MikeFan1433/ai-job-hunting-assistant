@@ -136,6 +136,41 @@ export const resumeAPI = {
     link.click();
     link.remove();
   },
+  /** Full interview prep as PDF from client-built plain text (all sections expanded). */
+  exportInterviewPrepFullPdf: async (text: string, title: string) => {
+    try {
+      const response = await api.post(
+        '/api/v1/export/text-document',
+        { title, text, format: 'pdf' },
+        { responseType: 'blob', timeout: 180000 }
+      );
+      const safe = title.replace(/[^\w\-.]+/g, '_').slice(0, 80) || 'Interview_Prep';
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${safe}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return response.data;
+    } catch (e: any) {
+      const data = e.response?.data;
+      if (data instanceof Blob) {
+        const t = await data.text();
+        try {
+          const j = JSON.parse(t);
+          const d = j.detail;
+          throw new Error(typeof d === 'string' ? d : JSON.stringify(j));
+        } catch (parseErr: unknown) {
+          if (parseErr instanceof SyntaxError) {
+            throw new Error(t.slice(0, 300) || e.message);
+          }
+          throw parseErr;
+        }
+      }
+      throw e;
+    }
+  },
 };
 
 // Workflow API - Simplified and Reliable
