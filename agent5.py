@@ -43,6 +43,171 @@ class InterviewPreparationAgent:
         if not self.api_key:
             raise ValueError("STUDENT_PORTAL_API_KEY not set")
     
+    def _build_agent2_skill_context(self, agent2_outputs: Dict) -> str:
+        """Extract must-haves, gaps, hidden signals, and interview preview for interview-predictor."""
+        jra = agent2_outputs.get("job_role_team_analysis") or {}
+        icp = agent2_outputs.get("ideal_candidate_profile") or {}
+        ma = agent2_outputs.get("match_assessment") or {}
+        must_haves = []
+        for item in (icp.get("hard_skills") or {}).get("must_have") or []:
+            if isinstance(item, dict) and item.get("skill"):
+                must_haves.append(f"- {item['skill']}: {item.get('details', '')}")
+            elif isinstance(item, str) and item.strip():
+                must_haves.append(f"- {item.strip()}")
+        hidden_signals = []
+        for item in jra.get("problems_to_solve") or []:
+            if isinstance(item, str) and item.strip():
+                hidden_signals.append(f"- {item.strip()}")
+        if isinstance(jra.get("team_objectives"), str) and jra["team_objectives"].strip():
+            hidden_signals.append(f"- team_objectives: {jra['team_objectives'][:400]}")
+        gaps = []
+        for dim in ("industry_match", "experience_match", "skills_match"):
+            block = ma.get(dim) or {}
+            for g in block.get("gaps") or []:
+                if isinstance(g, dict) and g.get("point"):
+                    gaps.append(f"- [{dim}] {g['point']} → {g.get('remedy', '')}")
+        preview_lines = []
+        for p in ma.get("interview_question_preview") or []:
+            if isinstance(p, dict) and p.get("question"):
+                preview_lines.append(
+                    f"- [{p.get('category', 'Behavior')}] {p['question']} ({p.get('why_likely', '')})"
+                )
+        parts = []
+        if must_haves:
+            parts.append("Must-haves (for question mapping):\n" + "\n".join(must_haves[:12]))
+        if hidden_signals:
+            parts.append("Hidden signals / decoded real needs:\n" + "\n".join(hidden_signals[:10]))
+        if gaps:
+            parts.append("Gaps to prepare (prioritize probes):\n" + "\n".join(gaps[:15]))
+        if preview_lines:
+            parts.append("Agent 2 interview_question_preview seeds:\n" + "\n".join(preview_lines[:10]))
+        if ma.get("match_percentage"):
+            parts.append(f"Match percentage: {ma.get('match_percentage')}")
+        verdict = (ma.get("application_decision") or {}).get("verdict")
+        if verdict:
+            parts.append(f"Application verdict: {verdict}")
+        return "\n\n".join(parts) if parts else "No structured Agent 2 skill context available."
+
+    def _normalize_behavioral_questions(self, theme1: Dict) -> None:
+        """Sort and normalize top_behavioral_questions from interview-predictor schema."""
+        key = "top_10_behavioral_questions"
+        questions = theme1.get(key) or theme1.get("top_behavioral_questions") or []
+        if not isinstance(questions, list):
+            questions = []
+        normalized = []
+        for i, q in enumerate(questions):
+            if not isinstance(q, dict):
+                continue
+            item = dict(q)
+            if "priority_rank" not in item or not isinstance(item.get("priority_rank"), (int, float)):
+                item["priority_rank"] = i + 1
+            else:
+                item["priority_rank"] = int(item["priority_rank"])
+            item.setdefault("priority", "high" if item["priority_rank"] <= 5 else "medium")
+            item.setdefault("category", "Behavior")
+            item.setdefault("source_jd_anchor", "")
+            item.setdefault("competency_tested", "")
+            why = item.get("why_they_ask_this")
+            if isinstance(why, str) and why.strip() and not why.strip().startswith("[Behavior]"):
+                item["why_they_ask_this"] = f"[Behavior] {why.strip()}"
+            normalized.append(item)
+        normalized.sort(key=lambda x: x.get("priority_rank", 99))
+        theme1[key] = normalized
+        if "top_behavioral_questions" in theme1:
+            theme1.pop("top_behavioral_questions", None)
+
+    def _normalize_predicted_interview_questions(self, summary: Dict) -> None:
+        """Normalize preparation_summary.predicted_interview_questions Top 10."""
+        if not isinstance(summary, dict):
+            return
+        questions = summary.get("predicted_interview_questions") or []
+        if not isinstance(questions, list):
+            questions = []
+        valid_categories = ("Behavior", "Domain", "Craft", "Company")
+        normalized = []
+        for q in questions:
+            if not isinstance(q, dict):
+                continue
+            question = str(q.get("question") or "").strip()
+            if not question:
+                continue
+            cat = str(q.get("category") or "Behavior").strip()
+            if cat not in valid_categories:
+                cat = "Behavior"
+            priority = str(q.get("priority") or "medium").strip().lower()
+            if priority not in ("high", "medium"):
+                priority = "medium"
+            normalized.append({
+                "question": question,
+                "category": cat,
+                "why_likely": str(q.get("why_likely") or q.get("why") or "").strip(),
+                "priority": priority,
+                "answer_framework": list(q.get("answer_framework") or []) if isinstance(q.get("answer_framework"), list) else [],
+                "key_points_to_emphasize": list(q.get("key_points_to_emphasize") or []) if isinstance(q.get("key_points_to_emphasize"), list) else [],
+            })
+        priority_order = {"high": 0, "medium": 1}
+        cat_order = {"Behavior": 0, "Domain": 1, "Craft": 2, "Company": 3}
+        normalized.sort(key=lambda x: (priority_order.get(x["priority"], 1), cat_order.get(x["category"], 9)))
+        summary["predicted_interview_questions"] = normalized[:10]
+
+    def _migrate_behavioral_frameworks_to_predicted(self, interview_prep: Dict) -> None:
+        """Copy answer_framework from legacy top_behavioral_questions into predicted Top 10 when missing."""
+        summary = interview_prep.get("preparation_summary") or {}
+        predicted = summary.get("predicted_interview_questions") or []
+        if not predicted:
+            return
+        theme1 = interview_prep.get("theme_1_behavioral_interview") or interview_prep.get("behavioral_interview") or {}
+        behavioral = theme1.get("top_10_behavioral_questions") or theme1.get("top_behavioral_questions") or []
+        if not behavioral:
+            return
+        by_q: Dict[str, Dict] = {}
+        for bq in behavioral:
+            if not isinstance(bq, dict):
+                continue
+            qtext = str(bq.get("question") or "").strip().lower()
+            if qtext:
+                by_q[qtext] = bq
+        for pq in predicted:
+            if not isinstance(pq, dict):
+                continue
+            if pq.get("answer_framework"):
+                continue
+            key = str(pq.get("question") or "").strip().lower()
+            src = by_q.get(key)
+            if not src:
+                continue
+            if src.get("answer_framework"):
+                pq["answer_framework"] = list(src["answer_framework"])
+            if src.get("key_points_to_emphasize") and not pq.get("key_points_to_emphasize"):
+                pq["key_points_to_emphasize"] = list(src["key_points_to_emphasize"])
+            if src.get("why_they_ask_this") and not pq.get("why_likely"):
+                pq["why_likely"] = str(src["why_they_ask_this"])
+
+    def _sanitize_star_placeholders(self, interview_prep: Dict) -> None:
+        """Ensure action/result fields use placeholders when they contain suspicious bare metrics."""
+        placeholder_en = "[Add specific metric]"
+        placeholder_zh = "[待你补充具体动作/数字]"
+        metric_pattern = re.compile(r"\b\d{1,3}%\b|\b\d{4,}\b")
+
+        def _maybe_tag(text: str) -> str:
+            if not text or placeholder_en in text or placeholder_zh in text:
+                return text
+            if metric_pattern.search(text) and "[" not in text:
+                return text + f" {placeholder_zh}"
+            return text
+
+        t1 = interview_prep.get("theme_1_behavioral_interview") or interview_prep.get("behavioral_interview") or {}
+        story = t1.get("storytelling_example") or {}
+        for key in ("action", "impact", "result"):
+            if key in story and isinstance(story[key], str):
+                story[key] = _maybe_tag(story[key])
+        t2 = interview_prep.get("theme_2_project_deep_dive") or interview_prep.get("project_deep_dive") or {}
+        for proj in t2.get("selected_projects") or []:
+            star = proj.get("project_overview_star") or {}
+            for key in ("action", "result"):
+                if key in star and isinstance(star[key], str):
+                    star[key] = _maybe_tag(star[key])
+
     def prepare_interview(
         self,
         jd_text: str,
@@ -92,6 +257,7 @@ class InterviewPreparationAgent:
         classified_str = json.dumps(classified_projects, indent=2, ensure_ascii=False)
         if len(classified_str) > 3000:
             classified_str = classified_str[:3000] + "\n... (truncated)"
+        skill_context = self._build_agent2_skill_context(agent2_outputs)
         _schema = AGENT5_JSON_SCHEMA or ""
         user_message = f"""Please generate comprehensive interview preparation materials based on the following:
 
@@ -100,6 +266,9 @@ class InterviewPreparationAgent:
 
 === FINAL OPTIMIZED RESUME (Complete Format) ===
 {resume_use}
+
+=== AGENT 2 SKILL CONTEXT (must-haves, gaps, interview preview) ===
+{skill_context}
 
 === OPTIMIZED WORK EXPERIENCES (Bullet Points) ===
 {work_exp_str}
@@ -125,7 +294,8 @@ Generate interview preparation materials with all 4 top-level keys. Return only 
         
         use_fast_model = fast_run or (read_timeout_sec is not None and read_timeout_sec <= 120)
         model_to_use = AGENT5_FAST_MODEL if use_fast_model else self.model
-        max_tokens = 8192
+        # Large interview packages routinely exceed 8k tokens; truncation yields empty parse.
+        max_tokens = 16384
         payload = {
             "model": model_to_use,
             "messages": [
@@ -210,6 +380,7 @@ Generate interview preparation materials with all 4 top-level keys. Return only 
             try:
                 interview_prep = self._parse_json_response(message_content)
                 _log.info(f"Agent 5 parsed keys: {list(interview_prep.keys())[:10]}")
+                self._sanitize_star_placeholders(interview_prep)
                 interview_prep = self._ensure_required_fields(interview_prep)
                 return interview_prep
             except Exception as parse_error:
@@ -403,20 +574,24 @@ Generate interview preparation materials with all 4 top-level keys. Return only 
                                 return None
             return None
         
-        # Try to extract theme_1_behavioral_interview
-        theme1 = extract_nested_json("theme_1_behavioral_interview")
+        # Try to extract theme_1_behavioral_interview (legacy) or behavioral_interview (new)
+        theme1 = extract_nested_json("theme_1_behavioral_interview") or extract_nested_json("behavioral_interview")
         if theme1:
             result["theme_1_behavioral_interview"] = theme1
         
-        # Try to extract theme_2_project_deep_dive
-        theme2 = extract_nested_json("theme_2_project_deep_dive")
+        # Try to extract theme_2_project_deep_dive / project_deep_dive
+        theme2 = extract_nested_json("theme_2_project_deep_dive") or extract_nested_json("project_deep_dive")
         if theme2:
             result["theme_2_project_deep_dive"] = theme2
         
-        # Try to extract theme_3_business_domain
-        theme3 = extract_nested_json("theme_3_business_domain")
+        # Try to extract theme_3_business_domain / business_domain
+        theme3 = extract_nested_json("theme_3_business_domain") or extract_nested_json("business_domain")
         if theme3:
             result["theme_3_business_domain"] = theme3
+
+        prep = extract_nested_json("preparation_summary")
+        if prep:
+            result["preparation_summary"] = prep
         
         return result
     
@@ -438,6 +613,7 @@ Generate interview preparation materials with all 4 top-level keys. Return only 
         t1 = interview_prep.get("theme_1_behavioral_interview", {})
         if "top_behavioral_questions" in t1 and "top_10_behavioral_questions" not in t1:
             t1["top_10_behavioral_questions"] = t1.pop("top_behavioral_questions")
+        self._normalize_behavioral_questions(t1)
         t2 = interview_prep.get("theme_2_project_deep_dive", {})
         for proj in (t2.get("selected_projects") or []):
             if "deep_dive_questions" in proj and "technical_deep_dive_questions" not in proj:
@@ -502,6 +678,11 @@ Generate interview preparation materials with all 4 top-level keys. Return only 
                 question["answer_framework"] = []
             if "key_points_to_emphasize" not in question:
                 question["key_points_to_emphasize"] = []
+            question.setdefault("source_jd_anchor", "")
+            question.setdefault("competency_tested", "")
+            question.setdefault("priority_rank", 0)
+            question.setdefault("priority", "medium")
+            question.setdefault("category", "Behavior")
         
         # Ensure theme_2_project_deep_dive exists
         if "theme_2_project_deep_dive" not in interview_prep:
@@ -587,19 +768,24 @@ Generate interview preparation materials with all 4 top-level keys. Return only 
                     for p in theme2.get("selected_projects", [])
                 ),
                 "total_business_questions": len(theme3.get("business_questions", [])),
-                "key_preparation_focus_areas": []
+                "key_preparation_focus_areas": [],
+                "predicted_interview_questions": [],
             }
-        else:
-            # Update counts if summary exists
-            summary = interview_prep["preparation_summary"]
-            summary["total_behavioral_questions"] = len(theme1.get("top_10_behavioral_questions", []))
-            summary["total_projects_analyzed"] = len(theme2.get("selected_projects", []))
-            summary["total_technical_questions"] = sum(
-                len(p.get("technical_deep_dive_questions", []))
-                for p in theme2.get("selected_projects", [])
-            )
-            summary["total_business_questions"] = len(theme3.get("business_questions", []))
-            if "key_preparation_focus_areas" not in summary:
-                summary["key_preparation_focus_areas"] = []
-        
+        summary = interview_prep["preparation_summary"]
+        summary["total_behavioral_questions"] = len(theme1.get("top_10_behavioral_questions", []))
+        summary["total_projects_analyzed"] = len(theme2.get("selected_projects", []))
+        summary["total_technical_questions"] = sum(
+            len(p.get("technical_deep_dive_questions", []))
+            for p in theme2.get("selected_projects", [])
+        )
+        summary["total_business_questions"] = len(theme3.get("business_questions", []))
+        summary.setdefault("key_preparation_focus_areas", [])
+        summary.setdefault("highest_risk_gaps_to_prepare", [])
+        summary.setdefault("additional_question_bank", [])
+        summary.setdefault("top_5_must_practice", [])
+        summary.setdefault("strongest_stories_to_lead_with", [])
+        summary.setdefault("predicted_interview_questions", [])
+        self._normalize_predicted_interview_questions(summary)
+        self._migrate_behavioral_frameworks_to_predicted(interview_prep)
+
         return interview_prep

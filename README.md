@@ -210,6 +210,7 @@ Primary variables are read in `config.py`. Commonly adjusted:
 | `AGENT2_FAST_MODE` | Faster JD analysis path when set to `1` (default in repo). |
 | `AGENT2_FAST_MODEL`, `AGENT4_FAST_MODEL`, `AGENT5_FAST_MODEL` | Per-agent fast models where applicable. |
 | `AGENT5_DISABLED` | Set to `1` to skip interview generation features. |
+| `AGENT5_SKIP_IN_WORKFLOW` | Default `1`: skip Agent 5 during initial workflow; runs once after user confirms resume via Interview Prep. |
 | `DISABLE_JSON_MODE` | Set to `1` if the provider does not support `response_format` JSON mode. |
 
 See inline comments in `config.py` for the full list and provider notes.

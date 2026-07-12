@@ -31,6 +31,7 @@ export interface UserInputs {
   country_or_region: string;
   jd_text: string;
   resume_text: string;
+  resume_pdf_upload_id?: string;
   projects_text: string;
   preferred_lang: 'en' | 'zh';
 }

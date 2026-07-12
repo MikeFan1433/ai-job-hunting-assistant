@@ -14,6 +14,186 @@ _MAX_STR = 500
 _MAX_ITEMS = 6
 
 
+def _cap_resume_preserving_experience(resume_text: str, max_chars: int) -> str:
+    """Truncate resume while keeping WORK EXPERIENCE section when possible."""
+    if not resume_text or len(resume_text) <= max_chars:
+        return resume_text or ""
+    upper = resume_text.upper()
+    exp_idx = upper.find("WORK EXPERIENCE")
+    if exp_idx < 0:
+        exp_idx = upper.find("\nEXPERIENCE")
+    if exp_idx < 0:
+        exp_idx = upper.find("EXPERIENCE")
+    if exp_idx >= 0:
+        head_budget = min(exp_idx + 400, max_chars // 3)
+        head = resume_text[:head_budget]
+        exp_budget = max_chars - len(head) - 30
+        exp_part = resume_text[exp_idx : exp_idx + max(exp_budget, max_chars // 2)]
+        return head + "\n" + exp_part + "\n... (truncated)"
+    return resume_text[: max_chars - 20] + "\n... (truncated)"
+
+
+def _normalize_bullet_reason(suggestion: Dict) -> None:
+    """Ensure reason + reason_struct are present and aligned."""
+    if not isinstance(suggestion, dict):
+        return
+    rs = suggestion.get("reason_struct")
+    if isinstance(rs, dict):
+        parts = []
+        for key, label in (
+            ("align", "对齐"),
+            ("rewrite", "改写"),
+            ("evidence", "依据"),
+            ("expected_impact", "预期"),
+        ):
+            val = rs.get(key)
+            if isinstance(val, str) and val.strip():
+                parts.append(f"{label}: {val.strip()}")
+        if parts and not (isinstance(suggestion.get("reason"), str) and suggestion["reason"].strip()):
+            suggestion["reason"] = " | ".join(parts)
+    elif isinstance(suggestion.get("reason"), str) and suggestion["reason"].strip():
+        suggestion.setdefault(
+            "reason_struct",
+            {"align": "", "rewrite": suggestion["reason"].strip(), "evidence": "", "expected_impact": ""},
+        )
+
+
+_SUMMARY_HEADER_RE = re.compile(
+    r"(?im)^\s*(?:SUMMARY|PROFESSIONAL\s+SUMMARY|PROFILE|EXECUTIVE\s+SUMMARY|CAREER\s+SUMMARY)\s*$"
+)
+_NEXT_MAJOR_SECTION_RE = re.compile(
+    r"(?im)^\s*(?:WORK\s+EXPERIENCE|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|EMPLOYMENT|SKILLS|EDUCATION|PROJECTS|CERTIFICATIONS)\s*$"
+)
+
+
+def _extract_resume_summary(resume_text: str) -> Dict[str, Any]:
+    """Detect summary section body and whether it uses bullet formatting."""
+    text = resume_text or ""
+    if not text.strip():
+        return {"has_summary": False, "header": "", "body": "", "uses_bullets": False, "bullets": []}
+
+    header_match = _SUMMARY_HEADER_RE.search(text)
+    if not header_match:
+        return {"has_summary": False, "header": "", "body": "", "uses_bullets": False, "bullets": []}
+
+    start = header_match.end()
+    tail = text[start:]
+    next_match = _NEXT_MAJOR_SECTION_RE.search(tail)
+    body = (tail[: next_match.start()] if next_match else tail).strip()
+    if not body:
+        return {"has_summary": True, "header": header_match.group(0).strip(), "body": "", "uses_bullets": False, "bullets": []}
+
+    bullets: List[str] = []
+    uses_bullets = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^[\s•\-\*●·]+\s*\S", stripped):
+            uses_bullets = True
+            bullets.append(re.sub(r"^[\s•\-\*●·]+\s*", "", stripped).strip())
+        elif bullets and uses_bullets:
+            bullets[-1] = f"{bullets[-1]} {stripped}"
+        else:
+            bullets.append(stripped)
+
+    if not uses_bullets and bullets:
+        body = "\n".join(bullets)
+    return {
+        "has_summary": True,
+        "header": header_match.group(0).strip(),
+        "body": body,
+        "uses_bullets": uses_bullets,
+        "bullets": bullets,
+    }
+
+
+def _format_summary_suggestion_text(body: str, uses_bullets: bool) -> str:
+    """Normalize suggested summary to match original bullet/paragraph style."""
+    text = (body or "").strip()
+    if not text:
+        return ""
+    if not uses_bullets:
+        return text
+    lines = [ln.strip() for ln in re.split(r"[\n\r]+", text) if ln.strip()]
+    formatted: List[str] = []
+    for ln in lines:
+        core = re.sub(r"^[\s•\-\*●·]+\s*", "", ln).strip()
+        if core:
+            formatted.append(f"● {core}")
+    return "\n".join(formatted) if formatted else text
+
+
+def _normalize_summary_suggestion(result: Dict, resume_text: Optional[str]) -> None:
+    """Align summary_suggestion with detected resume summary; force replace when summary exists."""
+    ss = result.get("summary_suggestion")
+    if not isinstance(ss, dict):
+        ss = {}
+        result["summary_suggestion"] = ss
+
+    detected = _extract_resume_summary(resume_text or "")
+    has_existing = bool(detected.get("has_summary"))
+    ss["has_existing_summary"] = has_existing or bool(ss.get("has_existing_summary"))
+
+    if has_existing and not (ss.get("original_summary") or "").strip():
+        ss["original_summary"] = detected.get("body") or ""
+
+    suggested = (ss.get("suggested_summary") or "").strip()
+    action = (ss.get("recommended_action") or "skip").lower()
+
+    if has_existing:
+        if action in ("skip", "keep_existing") and suggested:
+            ss["recommended_action"] = "replace"
+        elif action in ("skip", "keep_existing") and not suggested:
+            # LLM skipped — still surface replace so UI can prompt user (empty suggestion = no UI row)
+            ss["recommended_action"] = "replace"
+        elif action == "add":
+            ss["recommended_action"] = "replace"
+        if suggested and detected.get("uses_bullets"):
+            ss["suggested_summary"] = _format_summary_suggestion_text(suggested, True)
+    elif suggested and action == "skip":
+        ss["recommended_action"] = "add"
+
+    ss.setdefault("suggested_headline", "")
+    ss.setdefault("jd_keywords_embedded", [])
+    ss.setdefault("feedback_actions", ["accept", "reject", "further_modify"])
+
+
+def _map_experience_level_rewrites(result: Dict) -> None:
+    """Map Agent 4 experience_level_rewrites into experience_optimizations for UI/service."""
+    rewrites = result.get("experience_level_rewrites") or []
+    if not isinstance(rewrites, list) or not rewrites:
+        return
+    existing = result.get("experience_optimizations") or []
+    if isinstance(existing, list) and len(existing) > 0:
+        return
+    mapped: List[Dict] = []
+    for i, rw in enumerate(rewrites):
+        if not isinstance(rw, dict):
+            continue
+        entry = rw.get("experience_entry") or f"Experience {i + 1}"
+        bullets = rw.get("optimized_bullets") or []
+        details = []
+        for j, b in enumerate(bullets):
+            if isinstance(b, str) and b.strip():
+                details.append(
+                    {
+                        "original": rw.get("rewrite_goal", "") if j == 0 else "",
+                        "optimized": b.strip(),
+                        "optimization_rationale": rw.get("rewrite_goal", ""),
+                    }
+                )
+        mapped.append(
+            {
+                "experience_entry": {"title": entry, "company": "", "entry_index": i + 1},
+                "optimized_experience": {"optimized_bullets": bullets},
+                "optimization_details": details or [{"optimization_rationale": rw.get("rewrite_goal", "")}],
+                "_from_experience_level_rewrite": True,
+            }
+        )
+    result["experience_optimizations"] = mapped
+
+
 def _norm_resume_compare(s: str) -> str:
     if not s:
         return ""
@@ -212,18 +392,18 @@ class ResumeOptimizationAgent:
         use_ultra_fast = read_timeout_sec is not None and read_timeout_sec <= 15
         # Truncate large inputs to avoid API timeouts / empty responses
         if use_ultra_fast:
-            jd_text_use = jd_text[:800] if len(jd_text) > 800 else jd_text
-            resume_text_use = resume_text[:1200] if len(resume_text) > 1200 else resume_text
+            jd_text_use = jd_text[:1200] if len(jd_text) > 1200 else jd_text
+            resume_text_use = _cap_resume_preserving_experience(resume_text, 6000)
         elif use_fast_path:
-            jd_text_use = jd_text[:1800] if len(jd_text) > 1800 else jd_text
-            resume_text_use = resume_text[:2800] if len(resume_text) > 2800 else resume_text
+            jd_text_use = jd_text[:2500] if len(jd_text) > 2500 else jd_text
+            resume_text_use = _cap_resume_preserving_experience(resume_text, 12000)
         else:
             if read_timeout_sec is None or read_timeout_sec >= 180:
                 _jd_cap, _res_cap = 8000, 16000
             else:
-                _jd_cap, _res_cap = 3000, 4000
+                _jd_cap, _res_cap = 4000, 8000
             jd_text_use = jd_text[:_jd_cap] if len(jd_text) > _jd_cap else jd_text
-            resume_text_use = resume_text[:_res_cap] if len(resume_text) > _res_cap else resume_text
+            resume_text_use = _cap_resume_preserving_experience(resume_text, _res_cap)
         # When requested, use Agent 2–derived condensed JD (responsibilities, qualifications, keywords) to cut tokens
         if use_condensed_jd and agent2_outputs:
             condensed = build_condensed_jd_from_agent2(agent2_outputs, max_chars=1800 if use_fast_path else 2500)
@@ -693,8 +873,6 @@ Analyze the resume and provide optimization recommendations. Return only valid J
                     continue
                 if group.get("experience_jd_importance") not in _tri:
                     group["experience_jd_importance"] = "Medium"
-                er = group.get("experience_importance_rationale")
-                group["experience_importance_rationale"] = er.strip() if isinstance(er, str) else ""
                 suggestions = group.get("suggestions")
                 if not isinstance(suggestions, list):
                     group["suggestions"] = []
@@ -702,11 +880,40 @@ Analyze the resume and provide optimization recommendations. Return only valid J
                 for s in suggestions:
                     if not isinstance(s, dict):
                         continue
-                    ja = s.get("jd_requirement_anchor")
-                    s["jd_requirement_anchor"] = ja.strip() if isinstance(ja, str) else ""
                     s.pop("jd_match_level", None)
+                    _normalize_bullet_reason(s)
 
         _filter_invalid_bullet_suggestions(result, resume_text)
+        _map_experience_level_rewrites(result)
+
+        if "tailor_strategy" not in result or not isinstance(result.get("tailor_strategy"), dict):
+            result["tailor_strategy"] = {
+                "top_3_jd_keywords": [],
+                "core_narrative_one_liner": "",
+                "sections_to_emphasize": [],
+                "sections_to_compress_or_remove": [],
+                "match_too_low_warning": "",
+            }
+
+        if "resume_diagnosis" not in result or not isinstance(result.get("resume_diagnosis"), dict):
+            result["resume_diagnosis"] = {"issues": []}
+
+        if "summary_suggestion" not in result or not isinstance(result.get("summary_suggestion"), dict):
+            result["summary_suggestion"] = {
+                "recommended_action": "skip",
+                "has_existing_summary": False,
+                "original_summary": "",
+                "suggested_summary": "",
+                "suggested_headline": "",
+                "jd_keywords_embedded": [],
+                "feedback_actions": ["accept", "reject", "further_modify"],
+            }
+        _normalize_summary_suggestion(result, resume_text)
+
+        if "experience_level_rewrites" not in result:
+            result["experience_level_rewrites"] = []
+        elif not isinstance(result["experience_level_rewrites"], list):
+            result["experience_level_rewrites"] = [result["experience_level_rewrites"]]
 
         # API/UI only expose bullet_level_suggestions; never return replacement blocks.
         result["experience_replacements"] = []

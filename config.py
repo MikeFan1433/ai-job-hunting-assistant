@@ -87,6 +87,9 @@ AGENT5_FAST_MODEL = os.getenv("AGENT5_FAST_MODEL", "grok-4-fast")
 # Agent 5 (interview prep) enabled by default.
 AGENT5_DISABLED = os.getenv("AGENT5_DISABLED", "0").strip().lower() in ("1", "true", "yes")
 
+# Skip Agent 5 during initial workflow; run once after user confirms resume (saves cost + uses final resume).
+AGENT5_SKIP_IN_WORKFLOW = os.getenv("AGENT5_SKIP_IN_WORKFLOW", "1").strip().lower() in ("1", "true", "yes")
+
 # Create directories if they don't exist
 for directory in [DATA_DIR, RESUMES_DIR, PROJECTS_DIR, JOBS_DIR, VECTOR_DB_PATH]:
     os.makedirs(directory, exist_ok=True)

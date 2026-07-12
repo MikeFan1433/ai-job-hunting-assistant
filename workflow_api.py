@@ -12,7 +12,71 @@ import io
 import os
 import logging
 import re
+from pathlib import Path
+import shutil
+import uuid
 from pdf_parser import extract_text_from_pdf, validate_pdf
+from pdf_resume_editor import (
+    apply_pdf_text_replacements,
+    apply_summary_insertion,
+    apply_summary_section_replace,
+    extract_summary_body_for_pdf,
+    extract_summary_replacement_for_pdf,
+    modifications_to_replacements,
+    PYMUPDF_AVAILABLE,
+)
+
+RESUME_UPLOAD_DIR = Path("data/uploads").resolve()
+RESUME_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+_DEBUG_LOG_PATH = Path(__file__).resolve().parent / ".cursor" / "debug-e8b8c3.log"
+
+
+def _agent_debug(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    try:
+        _DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "sessionId": "e8b8c3",
+                        "hypothesisId": hypothesis_id,
+                        "location": location,
+                        "message": message,
+                        "data": data,
+                        "timestamp": int(datetime.now().timestamp() * 1000),
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+
+
+def _resolve_resume_pdf_upload_id(upload_id: Optional[str], workflow_id: str) -> Optional[str]:
+    """Copy uploaded PDF to a workflow-scoped file; return absolute path string or None."""
+    if not upload_id:
+        return None
+    src = RESUME_UPLOAD_DIR / f"{upload_id}.pdf"
+    if not src.is_file():
+        return None
+    dest = RESUME_UPLOAD_DIR / f"{workflow_id}_source.pdf"
+    shutil.copy2(src, dest)
+    return str(dest.resolve())
+
+
+def _read_resume_pdf_bytes(pdf_path: Optional[str]) -> Optional[bytes]:
+    if not pdf_path:
+        return None
+    p = Path(pdf_path)
+    if not p.is_file():
+        # Relative paths stored before resolve() — try project uploads dir
+        alt = RESUME_UPLOAD_DIR / Path(pdf_path).name
+        if alt.is_file():
+            p = alt
+        else:
+            return None
+    return p.read_bytes()
 
 # Configure logging
 logging.basicConfig(
@@ -30,7 +94,7 @@ from agent5 import InterviewPreparationAgent
 # Import services
 from resume_optimization_service import ResumeOptimizationService
 from resume_export import ResumeExporter
-from config import AGENT2_FAST_MODE, AI_BUILDER_BASE_URL, STUDENT_PORTAL_API_KEY, LLM_MODEL_JSON, AGENT5_DISABLED
+from config import AGENT2_FAST_MODE, AI_BUILDER_BASE_URL, STUDENT_PORTAL_API_KEY, LLM_MODEL_JSON, AGENT5_DISABLED, AGENT5_SKIP_IN_WORKFLOW
 from workflow_ui_messages import workflow_progress_message
 import httpx
 
@@ -61,6 +125,57 @@ workflow_state = {}
 # Store workflow results for later use (Agent 5 needs Agent 2 outputs)
 workflow_results = {}
 
+# Track which workflow is loaded in the process-global optimization_service singleton.
+_optimization_service_workflow_id: Optional[str] = None
+
+
+def _rehydrate_optimization_service(workflow_id: str) -> None:
+    """Restore optimization_service in-memory state from workflow_results."""
+    global _optimization_service_workflow_id
+    if workflow_id not in workflow_results:
+        raise HTTPException(status_code=404, detail="Workflow results not found. Please complete workflow first.")
+    data = workflow_results[workflow_id]
+    resume_text = data.get("resume_text") or ""
+    if not resume_text:
+        raise HTTPException(status_code=400, detail="Resume text not available in workflow results")
+
+    if _optimization_service_workflow_id != workflow_id:
+        optimization_service.original_resume = ""
+        optimization_service.optimization_recommendations = {}
+        optimization_service.user_feedback = {}
+        optimization_service.final_resume = ""
+        optimization_service.agent3_outputs = {}
+        _optimization_service_workflow_id = workflow_id
+
+    optimization_service.load_original_resume(resume_text)
+
+    agent3 = data.get("agent3_outputs")
+    if agent3:
+        optimization_service.load_agent3_outputs(agent3)
+
+    agent4 = data.get("agent4_outputs")
+    if agent4:
+        if not optimization_service.optimization_recommendations:
+            optimization_service.load_optimization_recommendations(agent4)
+        saved_feedback = data.get("user_feedback")
+        if saved_feedback and isinstance(saved_feedback, dict):
+            optimization_service.user_feedback = saved_feedback
+
+    stored_final = data.get("final_resume")
+    if stored_final:
+        optimization_service.final_resume = stored_final
+
+
+def _persist_optimization_state(workflow_id: str, modifications_applied: Optional[List] = None) -> None:
+    """Persist in-memory feedback/final resume into workflow_results for cross-request rehydrate."""
+    if workflow_id not in workflow_results:
+        return
+    workflow_results[workflow_id]["user_feedback"] = optimization_service.user_feedback
+    if optimization_service.final_resume:
+        workflow_results[workflow_id]["final_resume"] = optimization_service.final_resume
+    if modifications_applied is not None:
+        workflow_results[workflow_id]["modifications_applied"] = modifications_applied
+
 
 # ============================================================================
 # Request Models
@@ -73,6 +188,7 @@ class WorkflowStartRequest(BaseModel):
     country_or_region: Optional[str] = None  # Optional
     jd_text: str
     resume_text: str
+    resume_pdf_upload_id: Optional[str] = None  # From POST /upload/resume-pdf — preserves export formatting
     projects_text: Optional[str] = None  # Optional, max 1000 chars recommended
     preferred_lang: Optional[str] = "en"  # "en" | "zh" for output language
 
@@ -110,13 +226,18 @@ async def upload_resume_pdf(file: UploadFile = File(...)) -> Dict:
         
         if not extracted_text or len(extracted_text.strip()) < 50:
             raise HTTPException(status_code=400, detail="PDF appears to be empty or unreadable")
+
+        upload_id = f"resume_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        upload_path = RESUME_UPLOAD_DIR / f"{upload_id}.pdf"
+        upload_path.write_bytes(pdf_content)
         
         return {
             "status": "success",
             "extracted_text": extracted_text,
             "file_name": file.filename,
             "file_size": len(pdf_content),
-            "text_length": len(extracted_text)
+            "text_length": len(extracted_text),
+            "upload_id": upload_id,
         }
     
     except HTTPException:
@@ -158,11 +279,23 @@ async def agent2_quick_analyze(request: Agent2QuickRequest) -> Dict:
 
 class FeedbackRequest(BaseModel):
     """Request model for user feedback."""
-    feedback_type: str  # "experience_replacement", "format_adjustment", "experience_optimization", or "skills_optimization"
+    feedback_type: str  # experience_replacement | format_adjustment | experience_optimization | skills_optimization | bullet_suggestion
     item_id: str
-    feedback: str  # "accept", "further_modify", or "reject"
+    feedback: str  # accept | further_modify | reject
     additional_notes: Optional[str] = None
-    modified_text: Optional[str] = None  # For "further_modify" with inline edits
+    modified_text: Optional[str] = None  # For further_modify with inline edits
+    workflow_id: Optional[str] = None
+
+
+class BatchFeedbackRequest(BaseModel):
+    """Batch wrapper matching frontend { feedbacks: [...] } payload."""
+    feedbacks: List[FeedbackRequest]
+    workflow_id: Optional[str] = None
+
+
+class GenerateResumeRequest(BaseModel):
+    """Request to generate final resume after feedback."""
+    workflow_id: Optional[str] = None
 
 
 class RegenerateSuggestionRequest(BaseModel):
@@ -177,6 +310,7 @@ class ExportRequest(BaseModel):
     """Request model for resume export."""
     format: str = "pdf"  # "pdf" or "docx"
     title: str = "Resume"
+    workflow_id: Optional[str] = None
 
 
 class ExportTextDocumentRequest(BaseModel):
@@ -253,6 +387,7 @@ async def start_workflow(request: WorkflowStartRequest, background_tasks: Backgr
         "results": {},
         "error": None,
         "preferred_lang": _pl,
+        "resume_pdf_path": _resolve_resume_pdf_upload_id(request.resume_pdf_upload_id, workflow_id),
     }
     logger.info(f"✅ Workflow state initialized: {workflow_id}")
 
@@ -640,9 +775,9 @@ def _run_workflow_sync(
             final_resume = resume_text
             classified_projects = {}
 
-        # ── Agent 5: Interview Preparation ──
+        # ── Agent 5: Interview Preparation (deferred until user confirms resume) ──
         agent5_result = None
-        if not AGENT5_DISABLED:
+        if not AGENT5_DISABLED and not AGENT5_SKIP_IN_WORKFLOW:
             state["current_step"] = "agent5"
             state["progress"] = 62
             state["message"] = workflow_progress_message(pl, "agent5_gen")
@@ -676,7 +811,10 @@ def _run_workflow_sync(
                 state["progress"] = 90
         else:
             state["progress"] = 90
-            logger.info("Agent 5 disabled, skipping interview prep")
+            if AGENT5_SKIP_IN_WORKFLOW and not AGENT5_DISABLED:
+                logger.info("Agent 5 deferred until resume confirm (AGENT5_SKIP_IN_WORKFLOW)")
+            else:
+                logger.info("Agent 5 disabled, skipping interview prep")
 
         workflow_results[workflow_id] = {
             "jd_text": jd_text,
@@ -688,6 +826,8 @@ def _run_workflow_sync(
             "agent5_outputs": agent5_result or {},
             "final_resume": final_resume,
             "preferred_lang": pl,
+            "resume_pdf_path": (workflow_state.get(workflow_id) or {}).get("resume_pdf_path"),
+            "modifications_applied": [],
         }
         state["current_step"] = "completed"
         state["progress"] = 100
@@ -758,23 +898,29 @@ async def get_workflow_result(workflow_id: str) -> Dict:
 async def submit_feedback(request: FeedbackRequest) -> Dict:
     """Submit user feedback for optimization recommendations."""
     try:
+        if request.workflow_id:
+            _rehydrate_optimization_service(request.workflow_id)
         result = optimization_service.submit_feedback(
             feedback_type=request.feedback_type,
             item_id=request.item_id,
             feedback=request.feedback,
-            additional_notes=request.additional_notes
+            additional_notes=request.additional_notes,
+            modified_text=request.modified_text,
         )
         
-        # If "further_modify" with modified_text, apply the modification
         if request.feedback == "further_modify" and request.modified_text:
-            # Store the modified text for later application
             result["modified_text"] = request.modified_text
+
+        if request.workflow_id:
+            _persist_optimization_state(request.workflow_id)
         
         return {
             "status": "success",
             "feedback_result": result,
             "feedback_status": optimization_service.get_feedback_status()
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error submitting feedback: {str(e)}")
 
@@ -792,24 +938,35 @@ async def regenerate_suggestion(request: RegenerateSuggestionRequest) -> Dict:
 
 
 @app.post("/api/v1/resume/feedback/batch")
-async def submit_batch_feedback(feedbacks: List[FeedbackRequest]) -> Dict:
-    """Submit multiple feedbacks at once (for "accept all")."""
+async def submit_batch_feedback(request: BatchFeedbackRequest) -> Dict:
+    """Submit multiple feedbacks at once (for confirm modifications / accept all)."""
     try:
+        workflow_id = request.workflow_id or next(
+            (fb.workflow_id for fb in request.feedbacks if fb.workflow_id), None
+        )
+        if workflow_id:
+            _rehydrate_optimization_service(workflow_id)
         results = []
-        for feedback in feedbacks:
+        for feedback in request.feedbacks:
             result = optimization_service.submit_feedback(
                 feedback_type=feedback.feedback_type,
                 item_id=feedback.item_id,
                 feedback=feedback.feedback,
-                additional_notes=feedback.additional_notes
+                additional_notes=feedback.additional_notes,
+                modified_text=feedback.modified_text,
             )
             results.append(result)
+
+        if workflow_id:
+            _persist_optimization_state(workflow_id)
         
         return {
             "status": "success",
             "results": results,
             "feedback_status": optimization_service.get_feedback_status()
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error submitting batch feedback: {str(e)}")
 
@@ -827,14 +984,52 @@ async def get_feedback_status() -> Dict:
 
 
 @app.post("/api/v1/resume/generate")
-async def generate_final_resume() -> Dict:
+async def generate_final_resume(request: GenerateResumeRequest = GenerateResumeRequest()) -> Dict:
     """Generate final optimized resume after all feedback."""
     try:
+        if request.workflow_id:
+            _rehydrate_optimization_service(request.workflow_id)
+        fb = optimization_service.user_feedback or {}
+        bullet_fb = fb.get("bullet_suggestions") or {}
+        accepts = sum(
+            1
+            for v in bullet_fb.values()
+            if isinstance(v, dict) and v.get("feedback") in ("accept", "further_modify")
+        )
+        summary_fb = (fb.get("summary_suggestion") or {}).get("feedback")
+        _agent_debug(
+            "GEN-1",
+            "workflow_api.py:generate_final_resume",
+            "generate before apply",
+            {
+                "workflow_id": request.workflow_id,
+                "bullet_feedback_count": len(bullet_fb),
+                "bullet_accepts": accepts,
+                "summary_feedback": summary_fb,
+                "has_recommendations": bool(optimization_service.optimization_recommendations),
+            },
+        )
         result = optimization_service.apply_feedback_and_generate_resume()
         
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
-        
+
+        mods = result.get("modifications_applied") or []
+        _agent_debug(
+            "GEN-2",
+            "workflow_api.py:generate_final_resume",
+            "generate after apply",
+            {
+                "mods_count": len(mods),
+                "final_len": len(result.get("final_resume") or ""),
+                "final_has_summary": bool(re.search(r"(?im)^\s*SUMMARY\b", result.get("final_resume") or "")),
+                "mod_types": [m.get("type") for m in mods if isinstance(m, dict)][:12],
+            },
+        )
+
+        if request.workflow_id:
+            _persist_optimization_state(request.workflow_id, mods)
+
         return {
             "status": "success",
             "final_resume": result["final_resume"],
@@ -850,9 +1045,11 @@ async def generate_final_resume() -> Dict:
 
 
 @app.get("/api/v1/resume/recommendations")
-async def get_recommendations() -> Dict:
+async def get_recommendations(workflow_id: Optional[str] = None) -> Dict:
     """Get current optimization recommendations."""
     try:
+        if workflow_id:
+            _rehydrate_optimization_service(workflow_id)
         if not optimization_service.optimization_recommendations:
             raise HTTPException(status_code=404, detail="No recommendations available")
         
@@ -883,6 +1080,7 @@ async def prepare_interview(request: InterviewPrepareRequest, background_tasks: 
     Start Agent 5 interview preparation.
     Requires workflow_id to get Agent 2 outputs.
     """
+    _rehydrate_optimization_service(request.workflow_id)
     if not optimization_service.final_resume:
         raise HTTPException(status_code=400, detail="Final resume not available. Please generate it first.")
     
@@ -927,6 +1125,13 @@ async def prepare_interview(request: InterviewPrepareRequest, background_tasks: 
         agent4_outputs,
         _ipl,
     )
+
+    _agent_debug(
+        "H3",
+        "workflow_api.py:prepare_interview",
+        "interview prep started",
+        {"interview_id": interview_id, "workflow_id": request.workflow_id, "final_resume_len": len(final_resume or "")},
+    )
     
     return {
         "status": "started",
@@ -967,10 +1172,29 @@ async def execute_interview_prep_async(
         state["status"] = "completed"
         state["result"] = agent5_result
         state["message"] = workflow_progress_message(pl, "interview_done")
+
+        _agent_debug(
+            "H1-H5",
+            "workflow_api.py:execute_interview_prep_async",
+            "interview prep completed",
+            {
+                "interview_id": interview_id,
+                "result_keys": list(agent5_result.keys()) if isinstance(agent5_result, dict) else [],
+                "has_error": bool(isinstance(agent5_result, dict) and agent5_result.get("error")),
+                "has_behavioral": bool(isinstance(agent5_result, dict) and agent5_result.get("behavioral_interview")),
+                "has_theme1": bool(isinstance(agent5_result, dict) and agent5_result.get("theme_1_behavioral_interview")),
+            },
+        )
         
     except Exception as e:
         state["status"] = "failed"
         state["error"] = f"Interview preparation error: {str(e)}"
+        _agent_debug(
+            "H4",
+            "workflow_api.py:execute_interview_prep_async",
+            "interview prep failed",
+            {"interview_id": interview_id, "error": str(e)},
+        )
 
 
 @app.get("/api/v1/interview/progress/{interview_id}")
@@ -1007,28 +1231,166 @@ def _safe_download_filename(name: str, ext: str) -> str:
     return f"{base or 'export'}.{ext}"
 
 
+def _resume_has_optimizations(wf_data: Dict, final_resume: str) -> bool:
+    """True when user-confirmed edits exist or final text differs from the workflow original."""
+    mods = wf_data.get("modifications_applied") or []
+    if mods:
+        return True
+    original = (wf_data.get("resume_text") or "").strip()
+    final = (final_resume or "").strip()
+    return bool(final and original and final != original)
+
+
+def _build_resume_pdf_bytes(
+    pdf_bytes: Optional[bytes],
+    wf_data: Dict,
+    final_resume: str,
+    title: str,
+) -> bytes:
+    """
+    Preserve uploaded PDF layout: in-place bullet edits + optional SUMMARY insertion.
+    Plain-text PDF is only used when no original upload exists.
+    """
+    logger = logging.getLogger(__name__)
+    original_text = (wf_data.get("resume_text") or "").strip()
+    mods = wf_data.get("modifications_applied") or []
+    replacements = modifications_to_replacements(mods)
+    summary_insert = extract_summary_body_for_pdf(original_text, final_resume)
+    summary_replace = extract_summary_replacement_for_pdf(original_text, final_resume)
+
+    if pdf_bytes and PYMUPDF_AVAILABLE:
+        pdf_out = pdf_bytes
+        # Replace existing SUMMARY as a full section first (avoids leftover/overlap artifacts)
+        if summary_replace:
+            pdf_out, sum_stats = apply_summary_section_replace(pdf_out, summary_replace)
+            _agent_debug(
+                "PDF-2",
+                "workflow_api.py:_build_resume_pdf_bytes",
+                "pdf summary section replace",
+                sum_stats,
+            )
+        if replacements:
+            pdf_out, stats = apply_pdf_text_replacements(pdf_out, replacements)
+            if stats.get("missed", 0) > 0:
+                logger.warning(
+                    "PDF in-place edits missed %s replacement(s); keeping original layout",
+                    stats.get("missed"),
+                )
+            _agent_debug(
+                "PDF-1",
+                "workflow_api.py:_build_resume_pdf_bytes",
+                "pdf bullet replacements",
+                {"applied": stats.get("applied", 0), "missed": stats.get("missed", 0), "skipped": stats.get("skipped", 0)},
+            )
+        # Insert SUMMARY only when original had none
+        if summary_insert:
+            pdf_out, sum_stats = apply_summary_insertion(pdf_out, summary_insert)
+            _agent_debug(
+                "PDF-2",
+                "workflow_api.py:_build_resume_pdf_bytes",
+                "pdf summary insertion",
+                sum_stats,
+            )
+        return pdf_out
+
+    if pdf_bytes and not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF missing; cannot edit uploaded PDF in place")
+
+    if not pdf_bytes or not PYMUPDF_AVAILABLE:
+        result = exporter.export_plain_text_pdf_bytes(final_resume, title)
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        return result["data"]
+
+    return pdf_bytes
+
+
 @app.post("/api/v1/resume/export")
 async def export_resume(request: ExportRequest):
-    """Export final resume to PDF or DOCX. Returns file bytes (no temp file on disk)."""
+    """Export final resume to PDF or DOCX. PDF uses original upload layout when available."""
     try:
+        if request.workflow_id:
+            _rehydrate_optimization_service(request.workflow_id)
         if not optimization_service.final_resume:
             raise HTTPException(status_code=400, detail="Final resume not available")
         fmt = (request.format or "pdf").lower()
         title = request.title or "Resume"
+
+        wf_data = workflow_results.get(request.workflow_id or "", {}) if request.workflow_id else {}
+        pdf_path = wf_data.get("resume_pdf_path")
+        pdf_bytes = _read_resume_pdf_bytes(pdf_path)
+
+        # #region agent log
+        _agent_debug(
+            "PDF-0",
+            "workflow_api.py:export_resume",
+            "export entry",
+            {
+                "workflow_id": request.workflow_id,
+                "pdf_path": pdf_path,
+                "pdf_bytes_len": len(pdf_bytes) if pdf_bytes else 0,
+                "mods_count": len(wf_data.get("modifications_applied") or []),
+                "has_final": bool(optimization_service.final_resume),
+                "pymupdf": bool(PYMUPDF_AVAILABLE),
+            },
+        )
+        # #endregion
+
         if fmt == "pdf":
-            result = exporter.export_plain_text_pdf_bytes(optimization_service.final_resume, title)
-        elif fmt == "docx":
+            if pdf_bytes and not PYMUPDF_AVAILABLE:
+                logging.getLogger(__name__).warning("PyMuPDF missing; falling back to plain-text PDF export")
+            used_fallback = not (pdf_bytes and PYMUPDF_AVAILABLE)
+            pdf_out = _build_resume_pdf_bytes(
+                pdf_bytes,
+                wf_data,
+                optimization_service.final_resume,
+                title,
+            )
+            producer = None
+            pages = None
+            try:
+                import fitz as _fitz
+
+                _d = _fitz.open(stream=pdf_out, filetype="pdf")
+                producer = (_d.metadata or {}).get("producer")
+                pages = _d.page_count
+                _d.close()
+            except Exception:
+                pass
+            # #region agent log
+            _agent_debug(
+                "PDF-OUT",
+                "workflow_api.py:export_resume",
+                "export pdf output",
+                {
+                    "out_len": len(pdf_out),
+                    "pages": pages,
+                    "producer": producer,
+                    "used_plaintext_fallback": used_fallback,
+                    "is_reportlab": bool(producer and "ReportLab" in producer),
+                },
+            )
+            # #endregion
+            try:
+                debug_out = RESUME_UPLOAD_DIR / "last_export_debug.pdf"
+                debug_out.write_bytes(pdf_out)
+            except Exception:
+                pass
+            fname = _safe_download_filename(title, "pdf")
+            return StreamingResponse(
+                io.BytesIO(pdf_out),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+            )
+
+        if fmt == "docx":
             result = exporter.export_plain_text_docx_bytes(optimization_service.final_resume, title)
         else:
             raise HTTPException(status_code=400, detail="Unsupported format; use pdf or docx")
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         fname = _safe_download_filename(title, fmt)
-        media = (
-            "application/pdf"
-            if fmt == "pdf"
-            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         return StreamingResponse(
             io.BytesIO(result["data"]),
             media_type=media,

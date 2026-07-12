@@ -74,6 +74,395 @@ def derive_match_fit_tier(ma: Dict) -> str:
     return "partial"
 
 
+def _parse_percentage_upper_bound(raw: str) -> Optional[float]:
+    """Extract upper bound from match_percentage like '68-74%' or '72%'."""
+    if not raw or not isinstance(raw, str):
+        return None
+    s = raw.strip().replace("%", "")
+    if "-" in s:
+        parts = s.split("-", 1)
+        try:
+            return float(parts[1].strip())
+        except ValueError:
+            return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def normalize_match_percentage_range(ma: Dict) -> None:
+    """Ensure match_percentage is a range string; derive from 0-5 score if missing."""
+    if not ma or not isinstance(ma, dict):
+        return
+    raw = ma.get("match_percentage")
+    if isinstance(raw, (int, float)):
+        pct = int(round(float(raw)))
+        ma["match_percentage"] = f"{max(0, pct - 4)}-{min(100, pct + 4)}%"
+        return
+    if isinstance(raw, str) and raw.strip():
+        s = raw.strip()
+        if "-" not in s and s.replace("%", "").replace(".", "", 1).isdigit():
+            try:
+                pct = float(s.replace("%", ""))
+                ma["match_percentage"] = f"{max(0, int(pct) - 4)}-{min(100, int(pct) + 4)}%"
+            except ValueError:
+                pass
+        elif not s.endswith("%") and re.match(r"^\d+\s*-\s*\d+$", s):
+            ma["match_percentage"] = s.replace(" ", "") + "%"
+        return
+    try:
+        score = _safe_float(ma.get("overall_match_score"), 0.0)
+        mid = int(round(score * 20))
+        lo = max(0, mid - 6)
+        hi = min(100, mid + 6)
+        ma["match_percentage"] = f"{lo}-{hi}%"
+    except (TypeError, ValueError):
+        ma["match_percentage"] = "0-10%"
+
+
+def reconcile_dual_track_scoring(ma: Dict) -> None:
+    """Downgrade verdict when 0-5 scores and match_percentage range contradict."""
+    if not ma or not isinstance(ma, dict):
+        return
+    upper = _parse_percentage_upper_bound(str(ma.get("match_percentage", "")))
+    overall = _safe_float(ma.get("overall_match_score"), 0.0)
+    ad = ma.get("application_decision")
+    if not isinstance(ad, dict):
+        return
+    if upper is not None and overall >= 4.0 and upper < 65:
+        if ad.get("verdict") == "strong_apply":
+            ad["verdict"] = "worth_trying"
+        ma["match_level"] = "Moderate"
+    if upper is not None and overall < 2.8 and upper > 80:
+        lo = max(0, int(overall * 20) - 8)
+        hi = int(overall * 20) + 4
+        ma["match_percentage"] = f"{lo}-{hi}%"
+        if ad.get("verdict") in ("strong_apply", "worth_trying"):
+            ad["verdict"] = "low_priority"
+    ma["application_decision"] = ad
+
+
+def normalize_interview_question_preview(ma: Dict) -> None:
+    """Keep interview_question_preview as a list for Agent 5 handoff."""
+    if not ma or not isinstance(ma, dict):
+        return
+    preview = ma.get("interview_question_preview")
+    if preview is None:
+        ma["interview_question_preview"] = []
+        return
+    if not isinstance(preview, list):
+        ma["interview_question_preview"] = []
+        return
+    cleaned = []
+    for item in preview:
+        if isinstance(item, dict) and str(item.get("question") or "").strip():
+            cleaned.append({
+                "question": str(item.get("question", "")).strip(),
+                "why_likely": str(item.get("why_likely") or item.get("why") or "").strip(),
+                "category": str(item.get("category") or "Behavior").strip(),
+            })
+    ma["interview_question_preview"] = cleaned[:12]
+
+
+def normalize_gap_remedy_tiers(ma: Dict) -> None:
+    """Ensure gap remedy lines have tier prefix when missing."""
+    if not ma or not isinstance(ma, dict):
+        return
+    tier_tags = ("[能补]", "[难补]", "[不重要]", "[Fixable]", "[Hard]", "[Low impact]")
+    for dim in ("industry_match", "experience_match", "skills_match"):
+        block = ma.get(dim)
+        if not isinstance(block, dict):
+            continue
+        for gap in block.get("gaps") or []:
+            if not isinstance(gap, dict):
+                continue
+            remedy = str(gap.get("remedy") or "").strip()
+            if remedy and not any(remedy.startswith(t) for t in tier_tags):
+                gap["remedy"] = f"[能补] {remedy}"
+
+
+def _extract_tier_from_remedy(remedy: str) -> str:
+    remedy = (remedy or "").strip()
+    if remedy.startswith("[难补]") or remedy.startswith("[Hard]"):
+        return "难补"
+    if remedy.startswith("[不重要]") or remedy.startswith("[Low impact]"):
+        return "不重要"
+    return "能补"
+
+
+def _infer_severity_from_remedy(remedy: str) -> str:
+    tier = _extract_tier_from_remedy(remedy)
+    if tier == "难补":
+        return "high"
+    if tier == "不重要":
+        return "low"
+    return "medium"
+
+
+def normalize_gap_improvement_cards(ma: Dict) -> None:
+    """Ensure gap_improvement_cards exist; derive from dimension gaps when missing."""
+    if not ma or not isinstance(ma, dict):
+        return
+    cards = ma.get("gap_improvement_cards")
+    if not isinstance(cards, list):
+        cards = []
+    normalized = []
+    seen_names = set()
+    for item in cards:
+        if not isinstance(item, dict):
+            continue
+        gap_name = str(item.get("gap_name") or item.get("point") or item.get("gap") or "").strip()
+        if not gap_name or gap_name.lower() in seen_names:
+            continue
+        seen_names.add(gap_name.lower())
+        tier = str(item.get("tier") or "").strip()
+        if tier not in ("能补", "难补", "不重要"):
+            tier = _extract_tier_from_remedy(str(item.get("remedy") or ""))
+        severity = str(item.get("severity") or "").strip().lower()
+        if severity not in ("high", "medium", "low"):
+            severity = _infer_severity_from_remedy(str(item.get("remedy") or ""))
+        normalized.append({
+            "gap_name": gap_name,
+            "severity": severity,
+            "tier": tier,
+            "hm_concern": str(item.get("hm_concern") or item.get("concern") or "").strip(),
+            "fix_within_4_weeks": str(
+                item.get("fix_within_4_weeks") or item.get("fix") or item.get("remedy") or ""
+            ).strip(),
+        })
+    if len(normalized) < 3:
+        for dim in ("industry_match", "experience_match", "skills_match"):
+            block = ma.get(dim)
+            if not isinstance(block, dict):
+                continue
+            for gap in block.get("gaps") or []:
+                if not isinstance(gap, dict):
+                    continue
+                gap_name = str(gap.get("point") or gap.get("gap") or "").strip()
+                if not gap_name or gap_name.lower() in seen_names:
+                    continue
+                seen_names.add(gap_name.lower())
+                remedy = str(gap.get("remedy") or "").strip()
+                normalized.append({
+                    "gap_name": gap_name,
+                    "severity": _infer_severity_from_remedy(remedy),
+                    "tier": _extract_tier_from_remedy(remedy),
+                    "hm_concern": f"Screening risk: {gap_name}",
+                    "fix_within_4_weeks": remedy,
+                })
+                if len(normalized) >= 6:
+                    break
+            if len(normalized) >= 6:
+                break
+    ma["gap_improvement_cards"] = normalized[:6]
+
+
+def _normalize_why_not_entry(entry) -> Optional[Dict[str, str]]:
+    if isinstance(entry, str):
+        s = entry.strip()
+        return {"reason": s, "hm_probe_response": ""} if s else None
+    if isinstance(entry, dict):
+        reason = str(entry.get("reason") or entry.get("text") or entry.get("point") or "").strip()
+        if not reason:
+            return None
+        probe = str(entry.get("hm_probe_response") or entry.get("hm_probe") or "").strip()
+        return {"reason": reason, "hm_probe_response": probe}
+    return None
+
+
+def normalize_why_apply_not(ma: Dict) -> None:
+    """Normalize why_apply / why_not_apply; sync from why_bullets when needed."""
+    if not ma or not isinstance(ma, dict):
+        return
+    why_apply = _normalize_str_list(ma.get("why_apply"))
+    why_not = []
+    for item in ma.get("why_not_apply") or []:
+        norm = _normalize_why_not_entry(item)
+        if norm:
+            why_not.append(norm)
+    bullets = _normalize_str_list(ma.get("why_bullets"))
+    negative_markers = ("not recommend", "risk", "gap", "weak", "lack", "missing", "concern", "however", "but ", "不", "缺", "风险", "弱")
+    if not why_apply and bullets:
+        why_apply = [b for b in bullets if not any(m in b.lower() for m in negative_markers)]
+        if not why_apply:
+            why_apply = bullets[:3]
+    if not why_not and bullets:
+        for b in bullets:
+            if any(m in b.lower() for m in negative_markers):
+                why_not.append({"reason": b, "hm_probe_response": ""})
+    ma["why_apply"] = why_apply[:6]
+    ma["why_not_apply"] = why_not[:6]
+
+
+def normalize_organization_background(jra: Dict) -> None:
+    if not jra or not isinstance(jra, dict):
+        return
+    ob = jra.get("organization_background")
+    if not isinstance(ob, dict):
+        ob = {}
+    signals = ob.get("culture_signals") or []
+    norm_signals = []
+    if isinstance(signals, list):
+        for s in signals:
+            if isinstance(s, str) and s.strip():
+                norm_signals.append({"signal": s.strip(), "jd_evidence": ""})
+            elif isinstance(s, dict):
+                sig = str(s.get("signal") or s.get("text") or "").strip()
+                if sig:
+                    norm_signals.append({
+                        "signal": sig,
+                        "jd_evidence": str(s.get("jd_evidence") or s.get("evidence") or "").strip(),
+                    })
+    ob.setdefault("company_snapshot", "")
+    ob["culture_signals"] = norm_signals
+    ob["recent_product_moves"] = _normalize_str_list(ob.get("recent_product_moves"))
+    ob.setdefault("why_care_for_this_candidate", "")
+    sources = ob.get("sources")
+    if not isinstance(sources, list):
+        sources = [str(sources).strip()] if sources else ["JD only"]
+    ob["sources"] = [str(x).strip() for x in sources if str(x).strip()] or ["JD only"]
+    conf = str(ob.get("confidence") or "medium").strip().lower()
+    ob["confidence"] = conf if conf in ("high", "medium", "low") else "medium"
+    jra["organization_background"] = ob
+
+
+def normalize_salary_reality_check(jra: Dict) -> None:
+    if not jra or not isinstance(jra, dict):
+        return
+    sal = jra.get("salary_reality_check")
+    if not isinstance(sal, dict):
+        sal = {}
+    sal.setdefault("jd_stated_range", "")
+    sal.setdefault("market_range_estimate", "")
+    sal["negotiation_talking_points"] = _normalize_str_list(sal.get("negotiation_talking_points"))
+    sal.setdefault("vs_candidate_context", "")
+    disclaimer = str(sal.get("disclaimer") or "").strip()
+    if not disclaimer:
+        disclaimer = "非报价，需用户自行核实；非录用承诺。"
+    sal["disclaimer"] = disclaimer
+    jra["salary_reality_check"] = sal
+
+
+def normalize_jd_decode_insights(jra: Dict) -> None:
+    if not jra or not isinstance(jra, dict):
+        return
+    insights = jra.get("jd_decode_insights")
+    if not isinstance(insights, dict):
+        insights = {}
+    translations = []
+    for item in insights.get("real_intent_translations") or []:
+        if isinstance(item, dict):
+            jq = str(item.get("jd_quote") or item.get("jd") or "").strip()
+            rn = str(item.get("real_need") or item.get("real_intent") or "").strip()
+            if jq and rn:
+                mvr = str(item.get("marketing_vs_real") or "soft").strip().lower()
+                translations.append({
+                    "jd_quote": jq,
+                    "real_need": rn,
+                    "marketing_vs_real": mvr if mvr in ("hard", "soft") else "soft",
+                })
+    hidden = []
+    for item in insights.get("hidden_signals") or []:
+        if isinstance(item, dict):
+            cue = str(item.get("jd_cue") or item.get("cue") or "").strip()
+            if cue:
+                hidden.append({
+                    "jd_cue": cue,
+                    "interpretation": str(item.get("interpretation") or "").strip(),
+                    "candidate_implication": str(
+                        item.get("candidate_implication") or item.get("implication") or ""
+                    ).strip(),
+                })
+    level = insights.get("level_and_scope")
+    if not isinstance(level, dict):
+        level = {}
+    level.setdefault("seniority", "")
+    level.setdefault("ic_vs_lead", "")
+    level.setdefault("domain_depth", "")
+    insights["real_intent_translations"] = translations
+    insights["hidden_signals"] = hidden
+    insights["level_and_scope"] = level
+    insights["must_have_summary"] = _normalize_str_list(insights.get("must_have_summary"))
+    insights["nice_to_have_summary"] = _normalize_str_list(insights.get("nice_to_have_summary"))
+    jra["jd_decode_insights"] = insights
+
+    if translations and not jra.get("work_scenarios"):
+        jra["work_scenarios"] = [
+            f'JD: "{t["jd_quote"]}" → Real need: {t["real_need"]}.'
+            for t in translations[:6]
+        ]
+
+
+def postprocess_match_assessment_skill_fields(ma: Dict) -> None:
+    """Apply offer-toolkit post-processing for match_assessment."""
+    normalize_match_dimension_strengths_gaps(ma)
+    normalize_match_percentage_range(ma)
+    normalize_match_assessment_ui_fields(ma)
+    reconcile_dual_track_scoring(ma)
+    normalize_gap_remedy_tiers(ma)
+    normalize_gap_improvement_cards(ma)
+    normalize_why_apply_not(ma)
+    normalize_interview_question_preview(ma)
+
+
+def _format_work_scenario_decode_item(item) -> str:
+    """Normalize work_scenarios entries to JD deep-decode string format."""
+    if isinstance(item, str):
+        return item.strip()
+    if isinstance(item, dict):
+        jd = str(item.get("jd_quote") or item.get("jd") or item.get("quote") or "").strip()
+        real = str(
+            item.get("real_need")
+            or item.get("real_intent")
+            or item.get("expectation")
+            or item.get("translation")
+            or ""
+        ).strip()
+        signal = str(item.get("signal") or item.get("hidden_signal") or "").strip()
+        if jd and real:
+            line = f'JD: "{jd}" → Real need: {real}'
+            if signal:
+                line += f". Signal: {signal}"
+            return line
+        for key in ("text", "description", "scenario"):
+            if item.get(key):
+                return str(item[key]).strip()
+    return str(item).strip() if item is not None else ""
+
+
+def postprocess_jd_decode_work_scenario_fields(jra: Dict) -> None:
+    """Map JD decode outputs to Work Scenario tab fields (UI-compatible)."""
+    if not jra or not isinstance(jra, dict):
+        return
+
+    raw_scenarios = jra.get("work_scenarios")
+    if isinstance(raw_scenarios, str):
+        raw_scenarios = [raw_scenarios] if raw_scenarios.strip() else []
+    elif not isinstance(raw_scenarios, list):
+        raw_scenarios = []
+    jra["work_scenarios"] = [
+        s for s in (_format_work_scenario_decode_item(x) for x in raw_scenarios) if s
+    ]
+
+    challenges = _normalize_str_list(jra.get("challenges"))
+    problems = _normalize_str_list(jra.get("problems_to_solve"))
+    if not challenges and problems:
+        jra["challenges"] = problems
+    elif challenges and not problems:
+        jra["problems_to_solve"] = challenges
+    else:
+        jra["challenges"] = challenges
+        jra["problems_to_solve"] = problems or challenges
+
+    jra["project_types"] = _normalize_str_list(jra.get("project_types"))
+    jra["methods_technologies"] = _normalize_str_list(jra.get("methods_technologies"))
+
+    normalize_organization_background(jra)
+    normalize_salary_reality_check(jra)
+    normalize_jd_decode_insights(jra)
+
+
 def _normalize_str_list(val) -> list:
     if not val:
         return []
@@ -355,8 +744,7 @@ Please provide comprehensive analysis in the specified JSON format.{output_langu
                     extra_ma = self._fetch_match_assessment_only(jd_text, resume_text, preferred_lang)
                     if extra_ma:
                         analysis_result["match_assessment"] = {**ma, **extra_ma}
-                        normalize_match_dimension_strengths_gaps(analysis_result["match_assessment"])
-                        normalize_match_assessment_ui_fields(analysis_result["match_assessment"])
+                        postprocess_match_assessment_skill_fields(analysis_result["match_assessment"])
                 jra = analysis_result.get("job_role_team_analysis") or {}
                 if not _has_content(jra):
                     extra_jra = self._fetch_job_role_analysis_only(jd_text, preferred_lang)
@@ -778,7 +1166,7 @@ Output the complete JSON with all three top-level keys. No markdown wrapping.{ou
         # This handles cases where JSON parsing puts fields at wrong level
         if "job_role_team_analysis" not in data or not data.get("job_role_team_analysis"):
             # Check if root level has job_role_team_analysis fields
-            job_fields = ["team_objectives", "work_scenarios", "daily_activities", "project_types", 
+            job_fields = ["team_objectives", "work_scenarios", "challenges", "daily_activities", "project_types", 
                          "methods_technologies", "collaboration_patterns", "kpis", "required_knowledge",
                          "target_audience", "problems_to_solve", "context_notes"]
             found_job_fields = [field for field in job_fields if field in data]
@@ -881,11 +1269,15 @@ Output the complete JSON with all three top-level keys. No markdown wrapping.{ou
         if "match_percentage" not in match_assessment:
             try:
                 score = float(match_assessment.get("overall_match_score", "0.0"))
-                match_assessment["match_percentage"] = str(int(round(score * 20)))
+                mid = int(round(score * 20))
+                match_assessment["match_percentage"] = f"{max(0, mid - 6)}-{min(100, mid + 6)}%"
             except (TypeError, ValueError):
-                match_assessment["match_percentage"] = "0.0"
+                match_assessment["match_percentage"] = "0-10%"
         
-        normalize_match_dimension_strengths_gaps(match_assessment)
-        normalize_match_assessment_ui_fields(match_assessment)
+        postprocess_match_assessment_skill_fields(match_assessment)
+
+        jra = data.get("job_role_team_analysis")
+        if isinstance(jra, dict):
+            postprocess_jd_decode_work_scenario_fields(jra)
         
         return data

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { getUiStrings } from '../i18n/uiStrings';
-import { resumeAPI, interviewAPI } from '../services/api';
+import { resumeAPI, interviewAPI, extractApiErrorMessage } from '../services/api';
 import { 
   BarChart3, User, Briefcase, CheckCircle, 
   TrendingUp, MessageSquare
@@ -17,7 +17,7 @@ type TabType = 'scenario' | 'profile' | 'match' | 'resume' | 'interview';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { workflow, setInterview, inputs, setInputs, final_resume: finalResumeFromStore } = useAppStore();
+  const { workflow, setInterview, inputs, setInputs, final_resume: _finalResumeFromStore } = useAppStore();
   const ui = useMemo(() => getUiStrings(inputs.preferred_lang), [inputs.preferred_lang]);
   const langLocked = Boolean(workflow.workflow_id);
   const [activeTab, setActiveTab] = useState<TabType>('scenario');
@@ -32,7 +32,6 @@ export default function DashboardPage() {
   const [userFeedback, setUserFeedback] = useState<Record<string, string>>({});
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
   const [confirmedModifications, setConfirmedModifications] = useState(false);
-  const [exportingResumeFormat, setExportingResumeFormat] = useState<'pdf' | 'docx' | null>(null);
 
   useEffect(() => {
     if (workflow.status !== 'completed') {
@@ -41,14 +40,14 @@ export default function DashboardPage() {
     }
     loadRecommendations();
     loadFeedbackStatus();
-  }, [workflow.status, navigate]);
+  }, [workflow.status, workflow.workflow_id, navigate]);
 
   const loadRecommendations = async () => {
     try {
-      const data = await resumeAPI.getRecommendations();
+      const data = await resumeAPI.getRecommendations(workflow.workflow_id);
       setRecommendations(data.recommendations);
-    } catch (error: any) {
-      console.error('Error loading recommendations:', error);
+    } catch (error: unknown) {
+      console.error('Error loading recommendations:', extractApiErrorMessage(error));
     }
   };
 
@@ -62,31 +61,37 @@ export default function DashboardPage() {
   };
 
   const handleConfirmModifications = async (feedbackMap: Record<string, { action: string; text?: string }>) => {
+    if (!workflow.workflow_id) {
+      alert(ui.dashboard.genResumeFail);
+      return;
+    }
     setGeneratingResume(true);
     try {
       const batchPayload = Object.entries(feedbackMap).map(([itemId, fb]) => ({
-        feedback_type: 'bullet_suggestion',
+        feedback_type: itemId === 'summary_suggestion' ? 'summary_suggestion' : 'bullet_suggestion',
         item_id: itemId,
         feedback: fb.action === 'accept' ? 'accept' : fb.action === 'edited' ? 'further_modify' : 'reject',
         modified_text: fb.text,
       }));
 
-      try {
-        await resumeAPI.submitBatchFeedback(batchPayload);
-      } catch {
-        // Backend batch endpoint may not be available yet; continue with generation
-      }
+      await resumeAPI.submitBatchFeedback(batchPayload, workflow.workflow_id);
 
-      const result = await resumeAPI.generateFinal();
+      const result = await resumeAPI.generateFinal(workflow.workflow_id);
       const finalResume = result.final_resume;
       useAppStore.getState().setFinalResume(finalResume);
       setGeneratedResume(finalResume);
       setGeneratingResume(false);
       setConfirmedModifications(true);
 
+      try {
+        await resumeAPI.export('pdf', 'Resume', workflow.workflow_id);
+      } catch (exportErr: unknown) {
+        console.warn('Auto PDF export after generate failed:', extractApiErrorMessage(exportErr));
+      }
+
       await handleStartInterview();
-    } catch (error: any) {
-      alert(`${ui.dashboard.genResumeFail} ${error.message}`);
+    } catch (error: unknown) {
+      alert(`${ui.dashboard.genResumeFail} ${extractApiErrorMessage(error)}`);
       setGeneratingResume(false);
     }
   };
@@ -110,6 +115,9 @@ export default function DashboardPage() {
       const pollInterval = setInterval(async () => {
         try {
           const progress = await interviewAPI.getProgress(response.interview_id);
+          // #region agent log
+          fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'DashboardPage.tsx:poll',message:'interview poll tick',data:{interviewId:response.interview_id,status:progress.status,progress:progress.progress,hasResult:!!progress.result,resultKeys:progress.result&&typeof progress.result==='object'?Object.keys(progress.result):[],error:progress.error||null},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
+          // #endregion
           setInterview({
             status: progress.status,
             progress: progress.progress,
@@ -122,13 +130,22 @@ export default function DashboardPage() {
             clearInterval(pollInterval);
             setPreparingInterview(false);
             if (progress.result) {
+              // #region agent log
+              fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'DashboardPage.tsx:completed',message:'interview completed',data:{resultKeys:Object.keys(progress.result),behavioralKeys:progress.result.behavioral_interview?Object.keys(progress.result.behavioral_interview):[],theme1Keys:progress.result.theme_1_behavioral_interview?Object.keys(progress.result.theme_1_behavioral_interview):[]},timestamp:Date.now(),hypothesisId:'H1-H5'})}).catch(()=>{});
+              // #endregion
               setInterviewData(progress.result);
             }
           } else if (progress.status === 'failed') {
             clearInterval(pollInterval);
             setPreparingInterview(false);
+            // #region agent log
+            fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'DashboardPage.tsx:failed',message:'interview failed',data:{error:progress.error},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+            // #endregion
           }
-        } catch {
+        } catch (pollErr: unknown) {
+          // #region agent log
+          fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'DashboardPage.tsx:pollCatch',message:'poll error',data:{err:String(pollErr)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+          // #endregion
           clearInterval(pollInterval);
           setPreparingInterview(false);
         }
@@ -138,17 +155,6 @@ export default function DashboardPage() {
     } catch (error: any) {
       alert(`面试准备启动失败: ${error.message}`);
       setPreparingInterview(false);
-    }
-  };
-
-  const handleExportResume = async (format: 'pdf' | 'docx') => {
-    setExportingResumeFormat(format);
-    try {
-      await resumeAPI.export(format, 'Resume');
-    } catch (error: any) {
-      alert(`${ui.dashboard.exportErr} ${error.message}`);
-    } finally {
-      setExportingResumeFormat(null);
     }
   };
 
@@ -181,9 +187,6 @@ export default function DashboardPage() {
             data={agent4Results}
             onFeedbackUpdate={loadFeedbackStatus}
             feedbackStatus={feedbackStatus}
-            onExportResume={handleExportResume}
-            exportingResumeFormat={exportingResumeFormat}
-            hasFinalResume={Boolean(generatedResume || finalResumeFromStore)}
             onConfirmModifications={handleConfirmModifications}
             generatingResume={generatingResume}
             preparingInterview={preparingInterview}

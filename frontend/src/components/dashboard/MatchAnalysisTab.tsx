@@ -1,4 +1,4 @@
-import { BarChart3, TrendingUp, TrendingDown, AlertCircle, Award, Target, ListTodo } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, AlertCircle, Award, Target, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { getUiStrings } from '../../i18n/uiStrings';
 
@@ -36,6 +36,12 @@ function normalizeBulletList(raw: unknown): string[] {
 
 type StrengthRow = { point: string; amplify: string };
 type GapRow = { point: string; remedy: string };
+type EnrichedGapRow = GapRow & {
+  severity?: string;
+  tier?: string;
+  hm_concern?: string;
+  fix_within_4_weeks?: string;
+};
 
 function parseStrengthRows(raw: unknown): StrengthRow[] {
   if (!Array.isArray(raw)) return [];
@@ -73,6 +79,145 @@ function parseGapRows(raw: unknown): GapRow[] {
   return out;
 }
 
+type GapCard = {
+  gap_name: string;
+  severity: string;
+  tier: string;
+  hm_concern: string;
+  fix_within_4_weeks: string;
+};
+
+type WhyNotRow = { reason: string; hm_probe_response?: string };
+
+function parseGapCards(raw: unknown): GapCard[] {
+  if (!Array.isArray(raw)) return [];
+  const out: GapCard[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== 'object') continue;
+    const o = x as Record<string, unknown>;
+    const gap_name = String(o.gap_name ?? o.point ?? o.gap ?? '').trim();
+    if (!gap_name) continue;
+    out.push({
+      gap_name,
+      severity: String(o.severity ?? 'medium').trim(),
+      tier: String(o.tier ?? '').trim(),
+      hm_concern: String(o.hm_concern ?? o.concern ?? '').trim(),
+      fix_within_4_weeks: String(o.fix_within_4_weeks ?? o.fix ?? o.remedy ?? '').trim(),
+    });
+  }
+  return out;
+}
+
+function parseWhyNotRows(raw: unknown): WhyNotRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WhyNotRow[] = [];
+  for (const x of raw) {
+    if (typeof x === 'string' && x.trim()) {
+      out.push({ reason: x.trim() });
+      continue;
+    }
+    if (x && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      const reason = String(o.reason ?? o.text ?? o.point ?? '').trim();
+      if (reason) {
+        out.push({
+          reason,
+          hm_probe_response: String(o.hm_probe_response ?? o.hm_probe ?? '').trim() || undefined,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function severityClass(sev: string): string {
+  const s = sev.toLowerCase();
+  if (s === 'high') return 'bg-red-100 text-red-800';
+  if (s === 'low') return 'bg-slate-100 text-slate-700';
+  return 'bg-amber-100 text-amber-900';
+}
+
+function gapMatchKey(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function gapsMatch(a: string, b: string): boolean {
+  const ka = gapMatchKey(a);
+  const kb = gapMatchKey(b);
+  if (!ka || !kb) return false;
+  return ka === kb || ka.includes(kb) || kb.includes(ka);
+}
+
+function enrichGapRow(row: GapRow, card?: GapCard): EnrichedGapRow {
+  if (!card) return { ...row };
+  return {
+    point: row.point,
+    remedy: row.remedy || card.fix_within_4_weeks,
+    severity: card.severity || undefined,
+    tier: card.tier || undefined,
+    hm_concern: card.hm_concern || undefined,
+    fix_within_4_weeks: card.fix_within_4_weeks || undefined,
+  };
+}
+
+function cardToGapRow(card: GapCard): EnrichedGapRow {
+  return {
+    point: card.gap_name,
+    remedy: card.fix_within_4_weeks,
+    severity: card.severity || undefined,
+    tier: card.tier || undefined,
+    hm_concern: card.hm_concern || undefined,
+    fix_within_4_weeks: card.fix_within_4_weeks || undefined,
+  };
+}
+
+function mergeGapCardsIntoDimensions(
+  dimGaps: { industry: GapRow[]; experience: GapRow[]; skills: GapRow[] },
+  gapCards: GapCard[],
+  scores: { industry: number; experience: number; skills: number },
+): { industry: EnrichedGapRow[]; experience: EnrichedGapRow[]; skills: EnrichedGapRow[] } {
+  const usedCardIdx = new Set<number>();
+  const dimKeys = ['industry', 'experience', 'skills'] as const;
+
+  const enrichList = (rows: GapRow[]): EnrichedGapRow[] =>
+    rows.map((row) => {
+      const cardIdx = gapCards.findIndex(
+        (c, i) => !usedCardIdx.has(i) && gapsMatch(row.point, c.gap_name),
+      );
+      if (cardIdx >= 0) {
+        usedCardIdx.add(cardIdx);
+        return enrichGapRow(row, gapCards[cardIdx]);
+      }
+      return { ...row };
+    });
+
+  const result = {
+    industry: enrichList(dimGaps.industry),
+    experience: enrichList(dimGaps.experience),
+    skills: enrichList(dimGaps.skills),
+  };
+
+  const orphanCards = gapCards.filter((_, i) => !usedCardIdx.has(i));
+  for (const card of orphanCards) {
+    let targetDim: (typeof dimKeys)[number] | null = null;
+    for (const dim of dimKeys) {
+      if (dimGaps[dim].some((g) => gapsMatch(g.point, card.gap_name))) {
+        targetDim = dim;
+        break;
+      }
+    }
+    if (!targetDim) {
+      targetDim = dimKeys.reduce((a, b) => (scores[a] <= scores[b] ? a : b));
+    }
+    const alreadyIn = result[targetDim].some((g) => gapsMatch(g.point, card.gap_name));
+    if (!alreadyIn) {
+      result[targetDim].push(cardToGapRow(card));
+    }
+  }
+
+  return result;
+}
+
 function MatchStrengthRow({ point, amplify }: { point: string; amplify: string }) {
   return (
     <div className="flex items-start gap-2 p-2 bg-green-50 rounded border border-green-200">
@@ -89,15 +234,68 @@ function MatchStrengthRow({ point, amplify }: { point: string; amplify: string }
   );
 }
 
-function MatchGapRow({ point, remedy }: { point: string; remedy: string }) {
+function MatchGapRow({
+  point,
+  remedy,
+  severity,
+  tier,
+  hm_concern,
+  fix_within_4_weeks,
+  ui,
+}: EnrichedGapRow & { ui: ReturnType<typeof getUiStrings> }) {
+  const displayRemedy = remedy || fix_within_4_weeks || '';
   return (
     <div className="flex items-start gap-2 p-2 bg-orange-50 rounded border border-orange-200">
       <AlertCircle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-800 font-medium leading-snug">{point}</p>
-        {remedy ? (
+        {(severity || tier) && (
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            {severity ? (
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${severityClass(severity)}`}>
+                {ui.match.gapSeverity}: {severity}
+              </span>
+            ) : null}
+            {tier ? (
+              <span className="text-xs px-2 py-0.5 rounded bg-white border border-violet-200 text-violet-900">
+                {ui.match.gapTier}: {tier}
+              </span>
+            ) : null}
+          </div>
+        )}
+        {hm_concern ? (
+          <p className="mt-2 text-sm text-gray-700">
+            <span className="font-medium">{ui.match.hmConcern}:</span> {hm_concern}
+          </p>
+        ) : null}
+        {displayRemedy ? (
           <div className="mt-2 border-l-2 border-orange-400/90 pl-2.5">
-            <p className="text-sm text-gray-700 leading-relaxed">{remedy}</p>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {fix_within_4_weeks && remedy && remedy !== fix_within_4_weeks ? (
+                <>
+                  <span className="font-medium">{ui.match.fixWithin4Weeks}: </span>
+                  {fix_within_4_weeks}
+                  {remedy ? (
+                    <>
+                      <br />
+                      <span className="font-medium">{ui.match.gapRemedy}: </span>
+                      {remedy}
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {fix_within_4_weeks && !remedy ? (
+                    <>
+                      <span className="font-medium">{ui.match.fixWithin4Weeks}: </span>
+                      {fix_within_4_weeks}
+                    </>
+                  ) : (
+                    displayRemedy
+                  )}
+                </>
+              )}
+            </p>
           </div>
         ) : null}
       </div>
@@ -120,11 +318,22 @@ export default function MatchAnalysisTab({ data }: Props) {
   const skillsScore = parseFloat(skillsMatch.score || '0');
 
   const industryStrengths = parseStrengthRows(industryMatch.strengths);
-  const industryGaps = parseGapRows(industryMatch.gaps);
   const experienceStrengths = parseStrengthRows(experienceMatch.strengths);
-  const experienceGaps = parseGapRows(experienceMatch.gaps);
   const skillsStrengths = parseStrengthRows(skillsMatch.strengths);
-  const skillsGaps = parseGapRows(skillsMatch.gaps);
+
+  const gapCards = parseGapCards(matchAssessment.gap_improvement_cards);
+  const mergedGaps = mergeGapCardsIntoDimensions(
+    {
+      industry: parseGapRows(industryMatch.gaps),
+      experience: parseGapRows(experienceMatch.gaps),
+      skills: parseGapRows(skillsMatch.gaps),
+    },
+    gapCards,
+    { industry: industryScore, experience: experienceScore, skills: skillsScore },
+  );
+  const industryGaps = mergedGaps.industry;
+  const experienceGaps = mergedGaps.experience;
+  const skillsGaps = mergedGaps.skills;
 
   const rawTier = matchAssessment.match_fit_tier;
   const tier: MatchFitTier =
@@ -148,7 +357,8 @@ export default function MatchAnalysisTab({ data }: Props) {
       ? (ad as { one_line_summary: string }).one_line_summary.trim()
       : '';
 
-  const actionBullets = normalizeBulletList(matchAssessment.action_bullets);
+  const whyApply = normalizeBulletList(matchAssessment.why_apply);
+  const whyNotApply = parseWhyNotRows(matchAssessment.why_not_apply);
 
   const getScoreColor = (score: number) => {
     if (score >= 4) return 'text-green-600';
@@ -161,9 +371,6 @@ export default function MatchAnalysisTab({ data }: Props) {
     if (score >= 3) return 'from-yellow-400 to-yellow-600';
     return 'from-red-400 to-red-600';
   };
-
-  const textareaBox =
-    'rounded-lg border border-gray-200 bg-white shadow-inner px-4 py-3 text-sm text-gray-800 leading-relaxed min-h-[7.5rem]';
 
   return (
     <div className="space-y-6">
@@ -206,33 +413,44 @@ export default function MatchAnalysisTab({ data }: Props) {
         )}
       </div>
 
-      {/* What to do next (action bullets only; assessment narrative lives in score card above) */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {actionBullets.length === 0 ? (
-          <div className="px-4 py-6 sm:px-6">
-            <p className="text-sm text-gray-600 leading-relaxed">{ui.match.sectionEmptyHint}</p>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-2 px-4 py-3 sm:px-5 bg-emerald-50/80 border-l-4 border-emerald-500">
-              <ListTodo className="w-4 h-4 text-emerald-700 shrink-0" />
-              <h3 className="text-sm font-semibold text-gray-900 tracking-tight">{ui.match.sectionActions}</h3>
+      {/* Why apply / Why not apply */}
+      {(whyApply.length > 0 || whyNotApply.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {whyApply.length > 0 && (
+            <div className="rounded-xl border border-green-200 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border-l-4 border-green-500">
+                <ThumbsUp className="w-4 h-4 text-green-700 shrink-0" />
+                <h3 className="text-sm font-semibold text-gray-900">{ui.match.whyApply}</h3>
+              </div>
+              <ul className="px-4 py-4 space-y-2 text-sm text-gray-800 list-disc pl-8">
+                {whyApply.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
             </div>
-            <div className="px-4 py-4 sm:px-5 sm:py-5 bg-gray-50/50">
-              <div className={textareaBox}>
-                <ul className="list-disc pl-5 space-y-2 m-0">
-                  {actionBullets.map((item, index) => (
-                    <li key={index}>{item}</li>
-                  ))}
-                </ul>
+          )}
+          {whyNotApply.length > 0 && (
+            <div className="rounded-xl border border-orange-200 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border-l-4 border-orange-500">
+                <ThumbsDown className="w-4 h-4 text-orange-700 shrink-0" />
+                <h3 className="text-sm font-semibold text-gray-900">{ui.match.whyNotApply}</h3>
+              </div>
+              <div className="px-4 py-4 space-y-3">
+                {whyNotApply.map((row, i) => (
+                  <div key={i} className="text-sm">
+                    <p className="text-gray-800">• {row.reason}</p>
+                    {row.hm_probe_response && (
+                      <p className="mt-1 ml-4 text-gray-600 border-l-2 border-orange-300 pl-2">
+                        <span className="font-medium">{ui.match.hmProbeResponse}:</span> {row.hm_probe_response}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
-          </>
-        )}
-        <p className="text-xs text-gray-500 px-4 pb-3 sm:px-5 leading-snug border-t border-gray-100 pt-3 bg-white">
-          {ui.match.disclaimerShort}
-        </p>
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Detailed Match Score Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -324,7 +542,7 @@ export default function MatchAnalysisTab({ data }: Props) {
               </h4>
               <div className="space-y-2">
                 {industryGaps.map((row, index) => (
-                  <MatchGapRow key={index} point={row.point} remedy={row.remedy} />
+                  <MatchGapRow key={index} {...row} ui={ui} />
                 ))}
               </div>
             </div>
@@ -360,7 +578,7 @@ export default function MatchAnalysisTab({ data }: Props) {
               </h4>
               <div className="space-y-2">
                 {experienceGaps.map((row, index) => (
-                  <MatchGapRow key={index} point={row.point} remedy={row.remedy} />
+                  <MatchGapRow key={index} {...row} ui={ui} />
                 ))}
               </div>
             </div>
@@ -398,7 +616,7 @@ export default function MatchAnalysisTab({ data }: Props) {
               </h4>
               <div className="space-y-2">
                 {skillsGaps.map((row, index) => (
-                  <MatchGapRow key={index} point={row.point} remedy={row.remedy} />
+                  <MatchGapRow key={index} {...row} ui={ui} />
                 ))}
               </div>
             </div>

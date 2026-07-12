@@ -11,14 +11,99 @@ interface Props {
   confirmedModifications?: boolean;
 }
 
+function normalizeInterviewData(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {};
+  const d = { ...(raw as Record<string, unknown>) };
+  const keyMap: Record<string, string> = {
+    behavioral_interview: 'theme_1_behavioral_interview',
+    project_deep_dive: 'theme_2_project_deep_dive',
+    business_domain: 'theme_3_business_domain',
+  };
+  for (const [newK, oldK] of Object.entries(keyMap)) {
+    const block = d[newK];
+    if (block && typeof block === 'object' && !d[oldK]) {
+      d[oldK] = block;
+    }
+  }
+  const t1 = (d.theme_1_behavioral_interview as Record<string, unknown>) || {};
+  if (Array.isArray(t1.top_behavioral_questions) && !t1.top_10_behavioral_questions) {
+    t1.top_10_behavioral_questions = t1.top_behavioral_questions;
+  }
+  d.theme_1_behavioral_interview = t1;
+  return d;
+}
+
+function hasInterviewContent(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const src = raw as Record<string, unknown>;
+  if (src.error || src.skipped) return true;
+  const d = normalizeInterviewData(raw);
+  const behavioral = (d.theme_1_behavioral_interview as Record<string, unknown>) || {};
+  const projectDeepDive = (d.theme_2_project_deep_dive as Record<string, unknown>) || {};
+  const businessDomain = (d.theme_3_business_domain as Record<string, unknown>) || {};
+  const summary = (d.preparation_summary as Record<string, unknown>) || {};
+
+  const selfIntro = (behavioral.self_introduction as Record<string, unknown>) || {};
+  if (String(selfIntro.full_text || '').trim() || String(selfIntro.paragraph_1 || '').trim()) return true;
+
+  const storytelling = (behavioral.storytelling_example as Record<string, unknown>) || {};
+  if (String(storytelling.full_storytelling_answer || '').trim() || String(storytelling.hook || '').trim()) {
+    return true;
+  }
+
+  if (Array.isArray(behavioral.top_10_behavioral_questions) && behavioral.top_10_behavioral_questions.length > 0) {
+    return true;
+  }
+  const predicted = summary.predicted_interview_questions as unknown;
+  if (Array.isArray(predicted) && predicted.length > 0) {
+    return true;
+  }
+  if (Array.isArray(projectDeepDive.selected_projects) && projectDeepDive.selected_projects.length > 0) {
+    return true;
+  }
+  if (Array.isArray(businessDomain.business_questions) && businessDomain.business_questions.length > 0) {
+    return true;
+  }
+  return false;
+}
+
 export default function InterviewPrepTab({ data, preparingInterview, confirmedModifications }: Props) {
   const lang = useAppStore((s) => s.inputs.preferred_lang);
   const ui = getUiStrings(lang);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [fullPdfBusy, setFullPdfBusy] = useState(false);
 
-  // State 1: Before confirmation — guide user to complete resume review first
-  if (!confirmedModifications && !data) {
+  const normalizedData = normalizeInterviewData(data);
+  const hasContent = hasInterviewContent(data);
+
+  // #region agent log
+  fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'InterviewPrepTab.tsx:render',message:'tab render state',data:{preparingInterview:!!preparingInterview,confirmedModifications:!!confirmedModifications,hasContent,showLoadingBranch:!!(preparingInterview||(confirmedModifications&&!hasContent)),dataKeys:data&&typeof data==='object'?Object.keys(data):[]},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+  // #endregion
+
+  // State 1: Error or skipped
+  if (data?.error || data?.skipped) {
+    return (
+      <div className="text-center py-12 text-gray-500">
+        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+        <p>{ui.interview.unavailable}</p>
+        {data?.error && <p className="text-sm text-red-500 mt-2">{data.error}</p>}
+      </div>
+    );
+  }
+
+  // State 2: Generating — show loading ONLY while prepare is in flight
+  if (preparingInterview) {
+    return (
+      <div className="text-center py-16">
+        <Loader2 className="w-16 h-16 mx-auto mb-4 text-primary-500 animate-spin" />
+        <h3 className="text-lg font-semibold text-gray-700 mb-2">{ui.interview.loadingTitle}</h3>
+        <p className="text-sm text-gray-500">{ui.interview.loadingSub}</p>
+      </div>
+    );
+  }
+
+  // State 3: Before confirmation — guide user to complete resume review first
+  if (!confirmedModifications && !hasContent) {
     return (
       <div className="text-center py-16">
         <FileEdit className="w-16 h-16 mx-auto mb-4 text-gray-300" />
@@ -30,30 +115,8 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
     );
   }
 
-  // State 2: Generating — show loading
-  if (preparingInterview || (confirmedModifications && !data)) {
-    return (
-      <div className="text-center py-16">
-        <Loader2 className="w-16 h-16 mx-auto mb-4 text-primary-500 animate-spin" />
-        <h3 className="text-lg font-semibold text-gray-700 mb-2">{ui.interview.loadingTitle}</h3>
-        <p className="text-sm text-gray-500">{ui.interview.loadingSub}</p>
-      </div>
-    );
-  }
-
-  // State 3: Error or skipped
-  if (data?.error || data?.skipped) {
-    return (
-      <div className="text-center py-12 text-gray-500">
-        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-        <p>{ui.interview.unavailable}</p>
-        {data?.error && <p className="text-sm text-red-500 mt-2">{data.error}</p>}
-      </div>
-    );
-  }
-
-  // State 4: No data at all (shouldn't normally reach here)
-  if (!data) {
+  // State 4: Confirmed / finished prepare but no renderable content
+  if (!hasContent) {
     return (
       <div className="text-center py-12 text-gray-500">
         <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
@@ -71,7 +134,7 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
   };
 
   const downloadFullPrepPdf = async () => {
-    const text = buildInterviewPrepFullExportText(data, ui);
+    const text = buildInterviewPrepFullExportText(normalizedData, ui);
     if (!text.trim()) {
       alert(ui.interview.unavailable);
       return;
@@ -98,16 +161,42 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
     </button>
   );
 
-  const behavioral = data.theme_1_behavioral_interview || {};
-  const projectDeepDive = data.theme_2_project_deep_dive || {};
-  const businessDomain = data.theme_3_business_domain || {};
-  const summary = data.preparation_summary || {};
+  const prep = normalizedData as any;
+  const behavioral = prep.theme_1_behavioral_interview || {};
+  const projectDeepDive = prep.theme_2_project_deep_dive || {};
+  const businessDomain = prep.theme_3_business_domain || {};
+  const summary = prep.preparation_summary || {};
 
   const selfIntro = behavioral.self_introduction || {};
   const storytelling = behavioral.storytelling_example || {};
-  const behavioralQs = behavioral.top_10_behavioral_questions || [];
+  const predictedTop10 = summary.predicted_interview_questions || [];
   const projects = projectDeepDive.selected_projects || [];
   const businessQs = businessDomain.business_questions || [];
+
+  const categoryLabel = (cat: string) => {
+    const map: Record<string, string> = {
+      Behavior: ui.interview.categoryBehavior,
+      Domain: ui.interview.categoryDomain,
+      Craft: ui.interview.categoryCraft,
+      Company: ui.interview.categoryCompany,
+    };
+    return map[cat] || cat;
+  };
+
+  const categoryBadge = (cat: string) => {
+    switch (cat) {
+      case 'Behavior':
+        return 'bg-indigo-100 text-indigo-900';
+      case 'Domain':
+        return 'bg-blue-100 text-blue-900';
+      case 'Craft':
+        return 'bg-emerald-100 text-emerald-900';
+      case 'Company':
+        return 'bg-purple-100 text-purple-900';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
 
   const hasSelfIntroBlock = Boolean(selfIntro.full_text || selfIntro.paragraph_1);
 
@@ -178,31 +267,46 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
         </section>
       )}
 
-      {/* Behavioral Questions */}
-      {behavioralQs.length > 0 && (
+      {/* Predicted Top 10 (4 categories) */}
+      {predictedTop10.length > 0 && (
         <section>
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-indigo-600" />
-            {ui.interview.behavioralTitle(behavioralQs.length)}
+            <MessageSquare className="w-5 h-5 text-violet-600" />
+            {ui.interview.predictedTop10}
           </h3>
           <div className="space-y-3">
-            {behavioralQs.map((q: any, i: number) => {
-              const id = `bq_${i}`;
+            {predictedTop10.map((q: any, i: number) => {
+              const id = `pred_${i}`;
               const isOpen = expanded.has(id);
               return (
-                <div key={i} className="card border-l-4 border-indigo-400">
-                  <button onClick={() => toggle(id)} className="w-full flex items-start justify-between text-left">
-                    <span className="font-medium text-gray-900">Q{i + 1}: {q.question}</span>
+                <div key={i} className="card border-l-4 border-violet-400">
+                  <button onClick={() => toggle(id)} className="w-full flex items-start justify-between text-left gap-2">
+                    <div className="flex flex-wrap items-start gap-2 justify-between flex-1 min-w-0">
+                      <p className="font-medium text-gray-900">
+                        Q{i + 1}: {q.question}
+                      </p>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {q.category && (
+                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${categoryBadge(q.category)}`}>
+                            {categoryLabel(q.category)}
+                          </span>
+                        )}
+                        {q.priority === 'high' && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-medium">
+                            {ui.interview.priorityHigh}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400 mt-1 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 mt-1 shrink-0" />}
                   </button>
+                  {q.why_likely && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      <span className="font-medium text-gray-700">{ui.interview.whyLikely}:</span> {q.why_likely}
+                    </p>
+                  )}
                   {isOpen && (
                     <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-                      {q.why_they_ask_this && (
-                        <div className="bg-yellow-50 p-3 rounded-lg text-sm">
-                          <p className="font-medium text-gray-700 mb-1">{ui.interview.whyAsk}</p>
-                          <p className="text-gray-600">{q.why_they_ask_this}</p>
-                        </div>
-                      )}
                       {q.answer_framework?.length > 0 && (
                         <div className="bg-green-50 p-3 rounded-lg text-sm">
                           <p className="font-medium text-gray-700 mb-2">{ui.interview.framework}</p>
@@ -214,12 +318,6 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
                               </li>
                             ))}
                           </ol>
-                        </div>
-                      )}
-                      {!q.answer_framework?.length && q.sample_answer && (
-                        <div className="bg-green-50 p-3 rounded-lg text-sm">
-                          <p className="font-medium text-gray-700 mb-1">{ui.interview.sampleAnswer}</p>
-                          <p className="text-gray-700 whitespace-pre-wrap">{q.sample_answer}</p>
                         </div>
                       )}
                       {q.key_points_to_emphasize?.length > 0 && (
@@ -418,55 +516,6 @@ export default function InterviewPrepTab({ data, preparingInterview, confirmedMo
         </section>
       )}
 
-      {/* Preparation Summary */}
-      {summary.key_preparation_focus_areas?.length > 0 && (
-        <section>
-          <div className="card bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">{ui.interview.prepSummary}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-center">
-              <div className="bg-white rounded-lg p-3 shadow-sm">
-                <p className="text-2xl font-bold text-purple-600">{summary.total_behavioral_questions || 0}</p>
-                <p className="text-xs text-gray-500">{ui.interview.countBehavioral}</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 shadow-sm">
-                <p className="text-2xl font-bold text-green-600">{summary.total_projects_analyzed || 0}</p>
-                <p className="text-xs text-gray-500">{ui.interview.countProject}</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 shadow-sm">
-                <p className="text-2xl font-bold text-orange-600">{summary.total_business_questions || 0}</p>
-                <p className="text-xs text-gray-500">{ui.interview.countBusiness}</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 shadow-sm">
-                <p className="text-2xl font-bold text-blue-600">{summary.total_project_deep_dive_questions || summary.total_technical_questions || 0}</p>
-                <p className="text-xs text-gray-500">{ui.interview.countTechnical}</p>
-              </div>
-            </div>
-            {summary.key_preparation_focus_areas?.length > 0 && (
-              <div className="mb-3">
-                <p className="text-sm font-medium text-gray-700 mb-2">{ui.interview.focusAreas}</p>
-                <ul className="space-y-1">
-                  {summary.key_preparation_focus_areas.map((a: string, i: number) => (
-                    <li key={i} className="text-sm text-gray-600">• {a}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {summary.strongest_stories_to_lead_with?.length > 0 && (
-              <div className="mb-3">
-                <p className="text-sm font-medium text-gray-700 mb-2">{ui.interview.bestStory}</p>
-                <ul className="space-y-1">
-                  {summary.strongest_stories_to_lead_with.map((s: string, i: number) => (
-                    <li key={i} className="text-sm text-gray-600">• {s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {summary.final_preparation_advice && (
-              <p className="text-sm text-gray-700 bg-white p-3 rounded-lg border border-gray-200">{summary.final_preparation_advice}</p>
-            )}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

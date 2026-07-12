@@ -13,7 +13,7 @@ export function buildInterviewPrepFullExportText(data: any, ui: Ui): string {
 
   const selfIntro = behavioral.self_introduction || {};
   const storytelling = behavioral.storytelling_example || {};
-  const behavioralQs = behavioral.top_10_behavioral_questions || [];
+  const predictedTop10 = summary.predicted_interview_questions || [];
   const projects = projectDeepDive.selected_projects || [];
   const businessQs = businessDomain.business_questions || [];
 
@@ -68,19 +68,18 @@ export function buildInterviewPrepFullExportText(data: any, ui: Ui): string {
     }
   }
 
-  if (behavioralQs.length > 0) {
-    out.push(ui.interview.behavioralTitle(behavioralQs.length).toUpperCase());
+  if (predictedTop10.length > 0) {
+    out.push(ui.interview.predictedTop10.toUpperCase());
     sep();
-    behavioralQs.forEach((q: any, i: number) => {
-      out.push(`Q${i + 1}: ${q.question || ''}`);
-      if (q.why_they_ask_this) {
-        out.push(`${ui.interview.whyAsk} ${q.why_they_ask_this}`);
+    predictedTop10.forEach((q: any, i: number) => {
+      const cat = q.category ? ` [${q.category}]` : '';
+      out.push(`Q${i + 1}: ${q.question || ''}${cat}`);
+      if (q.why_likely) {
+        out.push(`${ui.interview.whyLikely}: ${q.why_likely}`);
       }
       if (q.answer_framework?.length) {
         out.push(ui.interview.framework);
         q.answer_framework.forEach((step: string, j: number) => out.push(`  ${j + 1}. ${step}`));
-      } else if (q.sample_answer) {
-        out.push(`${ui.interview.sampleAnswer}\n${q.sample_answer}`);
       }
       if (q.key_points_to_emphasize?.length) {
         out.push(ui.interview.keyPoints);
@@ -196,28 +195,6 @@ export function buildInterviewPrepFullExportText(data: any, ui: Ui): string {
       sep();
     });
   });
-
-  if (summary.key_preparation_focus_areas?.length || summary.final_preparation_advice) {
-    out.push(ui.interview.prepSummary.toUpperCase());
-    sep();
-    out.push(
-      `${ui.interview.countBehavioral}: ${summary.total_behavioral_questions ?? 0} | ${ui.interview.countProject}: ${summary.total_projects_analyzed ?? 0} | ${ui.interview.countBusiness}: ${summary.total_business_questions ?? 0} | ${ui.interview.countTechnical}: ${summary.total_project_deep_dive_questions ?? summary.total_technical_questions ?? 0}`
-    );
-    sep();
-    if (summary.key_preparation_focus_areas?.length) {
-      out.push(ui.interview.focusAreas);
-      summary.key_preparation_focus_areas.forEach((a: string) => out.push(`• ${a}`));
-      sep();
-    }
-    if (summary.strongest_stories_to_lead_with?.length) {
-      out.push(ui.interview.bestStory);
-      summary.strongest_stories_to_lead_with.forEach((s: string) => out.push(`• ${s}`));
-      sep();
-    }
-    if (summary.final_preparation_advice) {
-      out.push(summary.final_preparation_advice);
-    }
-  }
 
   return out.join('\n').trim();
 }

@@ -341,6 +341,37 @@ def parse_llm_json_response(content: str, debug_file: Optional[str] = None) -> D
                     return json.loads(extracted)
                 except json.JSONDecodeError:
                     pass
+
+            # Truncated JSON: close open braces/brackets and retry
+            if start_idx != -1 and brace_count > 0:
+                repaired = content[start_idx:]
+                # Close open strings if needed (best-effort)
+                quote_count = 0
+                esc = False
+                in_str = False
+                for ch in repaired:
+                    if esc:
+                        esc = False
+                        continue
+                    if ch == "\\":
+                        esc = True
+                        continue
+                    if ch == '"':
+                        in_str = not in_str
+                        quote_count += 1
+                if in_str:
+                    repaired += '"'
+                # Drop trailing incomplete key/value fragment after last comma/colon
+                repaired = re.sub(r',\s*"[^"]*"\s*:\s*("[^"]*)?$', "", repaired)
+                repaired = re.sub(r',\s*$', "", repaired)
+                open_braces = repaired.count("{") - repaired.count("}")
+                open_brackets = repaired.count("[") - repaired.count("]")
+                repaired += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
+                try:
+                    repaired = re.sub(r",(\s*[}\]])", r"\1", repaired)
+                    return json.loads(repaired)
+                except json.JSONDecodeError:
+                    pass
             
             # If all else fails, raise with helpful error message
             error_msg = f"Failed to parse JSON after all attempts: {str(e)}\n"

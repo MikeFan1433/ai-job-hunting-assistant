@@ -1,4 +1,4 @@
-import { Briefcase, Target, AlertTriangle, FileText, Code } from 'lucide-react';
+import { Briefcase, Target, Search, Layers } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { getUiStrings } from '../../i18n/uiStrings';
 
@@ -6,22 +6,39 @@ interface Props {
   data: any;
 }
 
+function categoryBadgeClass(cat: string): string {
+  switch (cat) {
+    case 'hard':
+      return 'bg-red-100 text-red-800';
+    case 'soft':
+      return 'bg-slate-100 text-slate-700';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
 export default function WorkScenarioTab({ data }: Props) {
   const lang = useAppStore((s) => s.inputs.preferred_lang);
   const ui = getUiStrings(lang);
   const analysis = data?.job_role_team_analysis || {};
 
-  const challenges = analysis.challenges || [];
-  const workScenarios = analysis.work_scenarios || [];
-  const projectTypes = analysis.project_types || [];
-  const methodsTech = analysis.methods_technologies || [];
+  const insights = analysis.jd_decode_insights || {};
+  const translations = insights.real_intent_translations || [];
+  const hiddenSignals = insights.hidden_signals || [];
+  const levelScope = insights.level_and_scope || {};
+  const mustHave = insights.must_have_summary || [];
+  const niceToHave = insights.nice_to_have_summary || [];
 
-  const hasContent =
-    analysis.team_objectives ||
-    challenges.length > 0 ||
-    workScenarios.length > 0 ||
-    projectTypes.length > 0 ||
-    methodsTech.length > 0;
+  const hasInsights =
+    translations.length > 0 ||
+    hiddenSignals.length > 0 ||
+    levelScope.seniority ||
+    levelScope.ic_vs_lead ||
+    levelScope.domain_depth ||
+    mustHave.length > 0 ||
+    niceToHave.length > 0;
+
+  const hasContent = Boolean(analysis.team_objectives) || hasInsights;
 
   return (
     <div className="space-y-6">
@@ -30,7 +47,7 @@ export default function WorkScenarioTab({ data }: Props) {
         <h2 className="text-2xl font-bold text-gray-900">{ui.workScenario.title}</h2>
       </div>
 
-      {/* 1. Team Objectives */}
+      {/* Team Objectives */}
       {analysis.team_objectives && (
         <div className="card">
           <div className="flex items-center gap-2 mb-3">
@@ -41,86 +58,112 @@ export default function WorkScenarioTab({ data }: Props) {
         </div>
       )}
 
-      {/* 2. Challenges */}
-      {challenges.length > 0 && (
-        <div className="card">
+      {/* JD decode insights */}
+      {hasInsights && (
+        <div className="card border-l-4 border-indigo-500">
           <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="w-5 h-5 text-amber-600" />
-            <h3 className="text-lg font-semibold text-gray-900">{ui.workScenario.challenges}</h3>
+            <Search className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-lg font-semibold text-gray-900">{ui.workScenario.jdDecodeInsights}</h3>
           </div>
-          <div className="space-y-3">
-            {challenges.map((item: string, index: number) => (
-              <div key={index} className="flex items-start gap-3 p-4 bg-amber-50 rounded-lg border-l-4 border-amber-400">
-                <div className="flex-shrink-0 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                  {index + 1}
-                </div>
-                <p className="text-gray-700 leading-relaxed flex-1">{item}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* 3. Work Scenarios */}
-      {workScenarios.length > 0 && (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Briefcase className="w-5 h-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900">{ui.workScenario.scenarios}</h3>
-          </div>
-          <div className="space-y-3">
-            {workScenarios.map((scenario: string, index: number) => (
-              <div key={index} className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-l-4 border-primary-500">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-6 h-6 bg-primary-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                    {index + 1}
+          {translations.length > 0 && (
+            <div className="mb-6">
+              <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                <Layers className="w-4 h-4" />
+                {ui.workScenario.realIntent}
+              </p>
+              <div className="space-y-3">
+                {translations.map((t: any, i: number) => (
+                  <div key={i} className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${categoryBadgeClass(t.marketing_vs_real)}`}>
+                        {t.marketing_vs_real === 'hard' ? ui.workScenario.marketingHard : ui.workScenario.marketingSoft}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-1">
+                      <span className="font-medium">{ui.workScenario.jdQuote}:</span> &ldquo;{t.jd_quote}&rdquo;
+                    </p>
+                    <p className="text-sm text-gray-800">
+                      <span className="font-medium">{ui.workScenario.realNeed}:</span> {t.real_need}
+                    </p>
                   </div>
-                  <p className="text-gray-700 leading-relaxed flex-1">{scenario}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hiddenSignals.length > 0 && (
+            <div className="mb-6">
+              <p className="text-sm font-medium text-gray-700 mb-3">{ui.workScenario.hiddenSignals}</p>
+              <div className="space-y-2">
+                {hiddenSignals.map((s: any, i: number) => (
+                  <div key={i} className="p-3 bg-slate-50 rounded-lg text-sm border border-slate-200">
+                    <p className="font-medium text-gray-800">{ui.workScenario.jdCue}: {s.jd_cue}</p>
+                    {s.interpretation && (
+                      <p className="text-gray-600 mt-1">{ui.workScenario.interpretation}: {s.interpretation}</p>
+                    )}
+                    {s.candidate_implication && (
+                      <p className="text-gray-700 mt-1">{ui.workScenario.candidateImplication}: {s.candidate_implication}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(levelScope.seniority || levelScope.ic_vs_lead || levelScope.domain_depth) && (
+            <div className="mb-6 p-4 bg-violet-50 rounded-lg">
+              <p className="text-sm font-medium text-gray-700 mb-2">{ui.workScenario.levelScope}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                {levelScope.seniority && (
+                  <div>
+                    <span className="text-gray-500">{ui.workScenario.seniority}:</span>{' '}
+                    <span className="text-gray-800">{levelScope.seniority}</span>
+                  </div>
+                )}
+                {levelScope.ic_vs_lead && (
+                  <div>
+                    <span className="text-gray-500">{ui.workScenario.icVsLead}:</span>{' '}
+                    <span className="text-gray-800">{levelScope.ic_vs_lead}</span>
+                  </div>
+                )}
+                {levelScope.domain_depth && (
+                  <div>
+                    <span className="text-gray-500">{ui.workScenario.domainDepth}:</span>{' '}
+                    <span className="text-gray-800">{levelScope.domain_depth}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(mustHave.length > 0 || niceToHave.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              {mustHave.length > 0 && (
+                <div>
+                  <p className="font-medium text-gray-700 mb-2">{ui.workScenario.mustHaveSummary}</p>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                    {mustHave.map((m: string, i: number) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+              {niceToHave.length > 0 && (
+                <div>
+                  <p className="font-medium text-gray-700 mb-2">{ui.workScenario.niceToHaveSummary}</p>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                    {niceToHave.map((m: string, i: number) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* 4. Project Types */}
-      {projectTypes.length > 0 && (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <FileText className="w-5 h-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900">{ui.workScenario.projectTypes}</h3>
-          </div>
-          <div className="space-y-3">
-            {projectTypes.map((type: string, index: number) => (
-              <div key={index} className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <p className="text-gray-700">{type}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 5. Methods & Technologies */}
-      {methodsTech.length > 0 && (
-        <div className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Code className="w-5 h-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900">{ui.workScenario.methodsTech}</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {methodsTech.map((method: string, index: number) => (
-              <span
-                key={index}
-                className="px-3 py-1.5 bg-green-100 text-green-800 rounded-full text-sm font-medium"
-              >
-                {method}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Empty State */}
       {!hasContent && (
         <div className="text-center py-12">
           <Briefcase className="w-16 h-16 text-gray-400 mx-auto mb-4" />

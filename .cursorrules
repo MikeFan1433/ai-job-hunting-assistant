@@ -1,0 +1,9 @@
+# AI Job Hunting Assistant — Cursor lessons
+
+## PDF resume export layout (2026-07)
+
+- Google Docs uploaded PDFs use subset TimesNewRoman fonts. Re-using those embedded font buffers via `insert_textbox` / `TextWriter` injects NBSP (`\xa0`) and soft hyphens (`\xad`) into output text.
+- Built-in PyMuPDF font name on this environment is `tiro` / `Times-Roman` (not `times`). `●` / `•` glyphs are missing from Base-14 fonts — draw a filled circle for bullets instead.
+- Never partially redact multi-line bullets (leaves stray `s` / `,`). Always full-width redact every wrapped line of the bullet, then rewrite.
+- Existing SUMMARY must be replaced as a full section (clear everything between SUMMARY header and WORK EXPERIENCE), not per-bullet patches — otherwise old and new bullets overlap.
+- Summary mods (`summary_suggestion` / `summary_bullet`) should not go through `modifications_to_replacements`; use `apply_summary_section_replace` / `apply_summary_insertion` instead.

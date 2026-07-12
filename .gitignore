@@ -70,3 +70,12 @@ deployment-*.tar.gz
 # LLM debug dumps (written at runtime by some agents)
 *_raw_response.txt
 agent*_raw_response.txt
+
+# Local harness / debug / uploads
+.cursor-harness-runs/
+.cursor/
+data/uploads/
+data/**/*.pdf
+data/**/*.yaml
+data/**/*.yml
+!data/.gitkeep

@@ -6,6 +6,75 @@ from pathlib import Path
 from datetime import datetime
 
 
+_SUMMARY_HEADER_RE = re.compile(
+    r"(?im)^\s*(?:SUMMARY|PROFESSIONAL\s+SUMMARY|PROFILE|EXECUTIVE\s+SUMMARY|CAREER\s+SUMMARY)\s*$"
+)
+_NEXT_MAJOR_SECTION_RE = re.compile(
+    r"(?im)^\s*(?:WORK\s+EXPERIENCE|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|EMPLOYMENT|SKILLS|EDUCATION|PROJECTS|CERTIFICATIONS)\s*$"
+)
+
+
+def _extract_resume_summary(resume_text: str) -> Dict:
+    text = resume_text or ""
+    header_match = _SUMMARY_HEADER_RE.search(text)
+    if not header_match:
+        return {"has_summary": False, "header": "SUMMARY", "body": "", "uses_bullets": False, "bullets": []}
+    start = header_match.end()
+    tail = text[start:]
+    next_match = _NEXT_MAJOR_SECTION_RE.search(tail)
+    body = (tail[: next_match.start()] if next_match else tail).strip()
+    bullets: List[str] = []
+    uses_bullets = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^[\s•\-\*●·]+\s*\S", stripped):
+            uses_bullets = True
+            bullets.append(re.sub(r"^[\s•\-\*●·]+\s*", "", stripped).strip())
+        elif bullets and uses_bullets:
+            bullets[-1] = f"{bullets[-1]} {stripped}"
+        else:
+            bullets.append(stripped)
+    return {
+        "has_summary": True,
+        "header": header_match.group(0).strip().upper() or "SUMMARY",
+        "body": body,
+        "uses_bullets": uses_bullets,
+        "bullets": bullets,
+    }
+
+
+def _format_summary_body(body: str, uses_bullets: bool) -> str:
+    text = (body or "").strip()
+    if not text:
+        return ""
+    if not uses_bullets:
+        return text
+    lines = [ln.strip() for ln in re.split(r"[\n\r]+", text) if ln.strip()]
+    out: List[str] = []
+    for ln in lines:
+        core = re.sub(r"^[\s•\-\*●·]+\s*", "", ln).strip()
+        if core:
+            out.append(f"● {core}")
+    return "\n".join(out) if out else text
+
+
+def _split_summary_bullets(body: str) -> List[str]:
+    bullets: List[str] = []
+    for line in (body or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^[\s•\-\*●·]+\s*\S", stripped):
+            bullets.append(re.sub(r"^[\s•\-\*●·]+\s*", "", stripped).strip())
+        elif bullets:
+            bullets[-1] = f"{bullets[-1]} {stripped}"
+        else:
+            bullets.append(stripped)
+    return bullets
+
+
 class ResumeOptimizationService:
     """Service to handle user feedback on resume optimization and generate final resume."""
     
@@ -34,8 +103,30 @@ class ResumeOptimizationService:
             "experience_replacements": {},
             "format_content_adjustments": {},
             "experience_optimizations": {},
-            "skills_section_optimization": {}
+            "skills_section_optimization": {},
+            "bullet_suggestions": {},
+            "summary_suggestion": {},
         }
+
+        # Map experience_level_rewrites → experience_optimizations for UI when legacy field empty
+        rewrites = recommendations.get("experience_level_rewrites") or []
+        opts = recommendations.get("experience_optimizations") or []
+        if rewrites and not opts:
+            mapped = []
+            for i, rw in enumerate(rewrites):
+                if not isinstance(rw, dict):
+                    continue
+                entry = rw.get("experience_entry") or f"Experience {i + 1}"
+                bullets = rw.get("optimized_bullets") or []
+                mapped.append(
+                    {
+                        "experience_entry": {"title": entry, "company": "", "entry_index": i + 1},
+                        "optimized_experience": {"optimized_bullets": bullets},
+                        "optimization_details": [{"optimization_rationale": rw.get("rewrite_goal", "")}],
+                        "_from_experience_level_rewrite": True,
+                    }
+                )
+            self.optimization_recommendations["experience_optimizations"] = mapped
         
         # Extract project classification if available
         if "project_classification" in recommendations:
@@ -61,10 +152,11 @@ class ResumeOptimizationService:
     
     def submit_feedback(
         self,
-        feedback_type: str,  # "experience_replacement", "format_adjustment", "experience_optimization", or "skills_optimization"
-        item_id: str,  # Unique identifier for the item
-        feedback: str,  # "accept", "further_modify", or "reject"
-        additional_notes: Optional[str] = None
+        feedback_type: str,  # experience_replacement | format_adjustment | experience_optimization | skills_optimization | bullet_suggestion
+        item_id: str,
+        feedback: str,  # accept | further_modify | reject
+        additional_notes: Optional[str] = None,
+        modified_text: Optional[str] = None,
     ) -> Dict:
         """
         Submit user feedback for a specific optimization recommendation.
@@ -114,7 +206,36 @@ class ResumeOptimizationService:
                 "additional_notes": additional_notes,
                 "timestamp": datetime.now().isoformat()
             }
-        
+
+        elif feedback_type == "bullet_suggestion":
+            if "bullet_suggestions" not in self.user_feedback:
+                self.user_feedback["bullet_suggestions"] = {}
+            entry = {
+                "feedback": feedback,
+                "additional_notes": additional_notes,
+                "timestamp": datetime.now().isoformat(),
+            }
+            if feedback == "further_modify" and modified_text:
+                entry["modified_text"] = modified_text.strip()
+            self.user_feedback["bullet_suggestions"][item_id] = entry
+
+        elif feedback_type == "summary_suggestion":
+            entry = {
+                "feedback": feedback,
+                "additional_notes": additional_notes,
+                "timestamp": datetime.now().isoformat(),
+            }
+            if feedback == "further_modify" and modified_text:
+                entry["modified_text"] = modified_text.strip()
+            self.user_feedback["summary_suggestion"] = entry
+
+        else:
+            return {
+                "status": "error",
+                "message": f"Unknown feedback_type: {feedback_type}",
+                "next_steps": [],
+            }
+
         return {
             "status": "success",
             "message": f"Feedback '{feedback}' recorded for {feedback_type} item {item_id}",
@@ -158,6 +279,20 @@ class ResumeOptimizationService:
         final_resume = self.original_resume
         modifications_applied = []
         adopted_project_indices = []  # Track which projects were adopted
+
+        # Apply optional professional summary (before bullet edits)
+        summary_data = self.optimization_recommendations.get("summary_suggestion") or {}
+        summary_action = (summary_data.get("recommended_action") or "skip").lower()
+        if summary_action in ("add", "replace"):
+            summary_fb = self.user_feedback.get("summary_suggestion") or {}
+            if summary_fb.get("feedback") in ("accept", "further_modify"):
+                result = self._apply_summary_suggestion(final_resume, summary_data, summary_fb)
+                if result.get("modification"):
+                    final_resume = result["updated_resume"]
+                    modifications_applied.append(result["modification"])
+                for extra in result.get("modifications") or []:
+                    if extra is not result.get("modification"):
+                        modifications_applied.append(extra)
         
         # Apply experience replacements
         if "experience_replacements" in self.optimization_recommendations:
@@ -233,6 +368,19 @@ class ResumeOptimizationService:
                 )
                 final_resume = result["updated_resume"]
                 modifications_applied.append(result["modification"])
+
+        # Apply bullet-level suggestions (Agent 4 bullet_level_suggestions schema)
+        bullet_groups = self.optimization_recommendations.get("bullet_level_suggestions") or []
+        bullet_feedback_map = self.user_feedback.get("bullet_suggestions", {})
+        for gi, group in enumerate(bullet_groups):
+            for si, suggestion in enumerate(group.get("suggestions") or []):
+                item_id = f"bls_{gi}_{si}"
+                feedback = bullet_feedback_map.get(item_id, {})
+                if feedback.get("feedback") in ("accept", "further_modify"):
+                    result = self._apply_bullet_suggestion(final_resume, suggestion, feedback)
+                    if result.get("modification"):
+                        final_resume = result["updated_resume"]
+                        modifications_applied.append(result["modification"])
         
         self.final_resume = final_resume
         
@@ -247,6 +395,18 @@ class ResumeOptimizationService:
         
         # Get optimized project documents (only projects adopted into resume)
         optimized_project_documents = self._get_optimized_project_documents(classified_projects)
+
+        yaml_export = {}
+        try:
+            from resume_data_export import export_resume_data_yaml
+
+            yaml_export = export_resume_data_yaml(
+                final_resume,
+                tailor_strategy=self.optimization_recommendations.get("tailor_strategy"),
+                summary_suggestion=summary_data if summary_action in ("add", "replace") else None,
+            )
+        except Exception:
+            yaml_export = {}
         
         return {
             "final_resume": final_resume,  # 1. 最终优化后的简历（完整格式）
@@ -256,7 +416,8 @@ class ResumeOptimizationService:
             "modifications_applied": modifications_applied,
             "total_modifications": len(modifications_applied),
             "summary": self._generate_modification_summary(modifications_applied),
-            "project_classification": updated_classification  # 分类摘要（索引和名称）
+            "project_classification": updated_classification,  # 分类摘要（索引和名称）
+            "resume_data_yaml": yaml_export.get("path"),
         }
 
     def build_agent4_outputs_for_interview_prep(self) -> Dict:
@@ -507,6 +668,217 @@ class ResumeOptimizationService:
         return {
             "updated_resume": updated_resume,
             "modification": modification
+        }
+
+    def _apply_summary_suggestion(
+        self,
+        resume: str,
+        summary_data: Dict,
+        feedback: Dict,
+    ) -> Dict:
+        """Insert or replace professional summary section per user feedback."""
+        fb = feedback.get("feedback")
+        if fb == "reject":
+            return {"updated_resume": resume, "modification": None}
+
+        headline = (summary_data.get("suggested_headline") or "").strip()
+        body = (
+            feedback.get("modified_text")
+            or summary_data.get("suggested_summary")
+            or ""
+        ).strip()
+        if not body and not headline:
+            return {"updated_resume": resume, "modification": None}
+
+        detected = _extract_resume_summary(resume)
+        uses_bullets = detected.get("uses_bullets") or bool(
+            re.search(r"^[\s•\-\*●·]+\s*\S", body, re.MULTILINE)
+        )
+        body = _format_summary_body(body, uses_bullets)
+        block_lines: List[str] = []
+        if headline:
+            block_lines.append(headline)
+        if body:
+            block_lines.append(body)
+        summary_body = "\n".join(block_lines)
+        header = detected.get("header") or "SUMMARY"
+        summary_section = f"{header}\n{summary_body}"
+
+        updated = resume
+        summary_pattern = re.compile(
+            r"(?ims)^\s*(?:SUMMARY|PROFESSIONAL\s+SUMMARY|PROFILE|EXECUTIVE\s+SUMMARY|CAREER\s+SUMMARY)\s*\n"
+            r".*?(?=^\s*(?:WORK\s+EXPERIENCE|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|EMPLOYMENT|SKILLS|EDUCATION|PROJECTS)\s*$|\Z)",
+        )
+        if summary_pattern.search(resume):
+            updated = summary_pattern.sub(summary_section + "\n\n", resume, count=1)
+        else:
+            exp_match = re.search(
+                r"(?im)^\s*(WORK\s+EXPERIENCE|EXPERIENCE|PROFESSIONAL\s+EXPERIENCE|EMPLOYMENT|SKILLS|EDUCATION)\s*$",
+                resume,
+            )
+            if exp_match:
+                idx = exp_match.start()
+                updated = resume[:idx].rstrip() + "\n\n" + summary_section + "\n\n" + resume[idx:].lstrip()
+            else:
+                updated = resume.rstrip() + "\n\n" + summary_section + "\n"
+
+        if updated == resume:
+            return {"updated_resume": resume, "modification": None}
+
+        original_body = (
+            (summary_data.get("original_summary") or "").strip()
+            or detected.get("body")
+            or ""
+        )
+        modifications: List[Dict] = []
+        if detected.get("has_summary") and original_body:
+            orig_bullets = detected.get("bullets") or _split_summary_bullets(original_body)
+            new_bullets = _split_summary_bullets(body) if uses_bullets else [body]
+            if orig_bullets and new_bullets and len(orig_bullets) == len(new_bullets):
+                for ob, nb in zip(orig_bullets, new_bullets):
+                    if ob.strip() and nb.strip() and ob.strip() != nb.strip():
+                        modifications.append(
+                            {
+                                "type": "summary_bullet",
+                                "original": ob.strip(),
+                                "replaced_with": nb.strip(),
+                            }
+                        )
+            elif original_body.strip() != summary_body.strip():
+                modifications.append(
+                    {
+                        "type": "summary_suggestion",
+                        "original": original_body.strip(),
+                        "replaced_with": summary_body.strip(),
+                    }
+                )
+        else:
+            modifications.append(
+                {
+                    "type": "summary_suggestion",
+                    "original": "",
+                    "replaced_with": summary_body.strip(),
+                    "is_insert": True,
+                }
+            )
+
+        return {
+            "updated_resume": updated,
+            "modification": modifications[0] if len(modifications) == 1 else None,
+            "modifications": modifications,
+        }
+
+    def _apply_bullet_suggestion(
+        self,
+        resume: str,
+        suggestion: Dict,
+        feedback: Dict,
+    ) -> Dict:
+        """Replace a single resume bullet per user accept/edit feedback."""
+        original = (suggestion.get("original_bullet") or "").strip()
+        if not original:
+            return {"updated_resume": resume, "modification": None}
+
+        fb = feedback.get("feedback")
+        if fb == "reject":
+            return {"updated_resume": resume, "modification": None}
+
+        if fb == "accept":
+            new_bullet = (suggestion.get("suggested_bullet") or "").strip()
+        elif fb == "further_modify":
+            new_bullet = (
+                feedback.get("modified_text")
+                or feedback.get("additional_notes")
+                or suggestion.get("suggested_bullet")
+                or ""
+            ).strip()
+        else:
+            return {"updated_resume": resume, "modification": None}
+
+        if not new_bullet or new_bullet == original:
+            return {"updated_resume": resume, "modification": None}
+
+        def _strip_marker(text: str) -> str:
+            return re.sub(r"^[\s•\-\*●·]+\s*", "", text.strip())
+
+        def _norm_ws(text: str) -> str:
+            return re.sub(r"\s+", " ", text or "").strip()
+
+        updated_resume = resume
+        if original in resume:
+            updated_resume = resume.replace(original, new_bullet, 1)
+        else:
+            orig_core = _strip_marker(original)
+            orig_norm = _norm_ws(orig_core)
+            # Exact line match after marker strip
+            for line in resume.splitlines():
+                if _strip_marker(line) == orig_core or _norm_ws(_strip_marker(line)) == orig_norm:
+                    prefix = line[: len(line) - len(line.lstrip())]
+                    marker_match = re.match(r"^(\s*[•\-\*●·]\s*)", line.lstrip())
+                    marker = marker_match.group(1) if marker_match else "• "
+                    replacement = (
+                        f"{prefix}{marker}{_strip_marker(new_bullet)}"
+                        if marker_match
+                        else new_bullet
+                    )
+                    updated_resume = resume.replace(line, replacement, 1)
+                    break
+            # Fuzzy: collapse whitespace across multi-line bullets in resume
+            if updated_resume == resume and len(orig_norm) >= 24:
+                # Search for original core as a whitespace-flexible pattern
+                pattern = re.escape(orig_norm).replace(r"\ ", r"\s+")
+                m = re.search(pattern, resume, flags=re.IGNORECASE)
+                if not m:
+                    # Try first 80 chars of core (PDF wrap mismatch)
+                    short = orig_norm[:80]
+                    if len(short) >= 24:
+                        pattern = re.escape(short).replace(r"\ ", r"\s+")
+                        m = re.search(pattern, resume, flags=re.IGNORECASE)
+                if m:
+                    # Expand match to full bullet line(s) starting at match
+                    start = m.start()
+                    # Walk back to line start / bullet
+                    while start > 0 and resume[start - 1] not in "\n":
+                        start -= 1
+                    end = m.end()
+                    while end < len(resume) and resume[end] not in "\n":
+                        end += 1
+                    # Include following wrapped lines that don't start a new bullet/section
+                    while end < len(resume):
+                        rest = resume[end:]
+                        nxt = re.match(r"\n([^\n]*)", rest)
+                        if not nxt:
+                            break
+                        nxt_line = nxt.group(1)
+                        if re.match(r"^\s*[•\-\*●·]", nxt_line) or re.match(
+                            r"^\s*(WORK EXPERIENCE|EXPERIENCE|EDUCATION|SKILLS|PROJECTS|SUMMARY)\b",
+                            nxt_line,
+                            re.I,
+                        ):
+                            break
+                        if not nxt_line.strip():
+                            break
+                        end += len(nxt.group(0))
+                    chunk = resume[start:end]
+                    # Preserve leading bullet marker from chunk
+                    marker_match = re.match(r"^(\s*[•\-\*●·]\s*)", chunk)
+                    if marker_match and not re.match(r"^\s*[•\-\*●·]", new_bullet):
+                        replacement = marker_match.group(1) + _strip_marker(new_bullet)
+                    else:
+                        replacement = new_bullet
+                    updated_resume = resume[:start] + replacement + resume[end:]
+
+        if updated_resume == resume:
+            return {"updated_resume": resume, "modification": None}
+
+        return {
+            "updated_resume": updated_resume,
+            "modification": {
+                "type": "bullet_suggestion",
+                "original": original,
+                "replaced_with": new_bullet,
+                "change_type": suggestion.get("change_type"),
+            },
         }
     
     def _apply_format_adjustment(
@@ -1026,6 +1398,23 @@ class ResumeOptimizationService:
                 total_recommendations += 1
                 if "skills_section_optimization" in self.user_feedback:
                     feedback_received += 1
+
+        # Count bullet-level suggestions
+        if "bullet_level_suggestions" in self.optimization_recommendations:
+            for gi, group in enumerate(self.optimization_recommendations["bullet_level_suggestions"]):
+                suggestions = group.get("suggestions") or []
+                total_recommendations += len(suggestions)
+                for si in range(len(suggestions)):
+                    item_id = f"bls_{gi}_{si}"
+                    if item_id in self.user_feedback.get("bullet_suggestions", {}):
+                        feedback_received += 1
+
+        # Optional summary suggestion
+        ss = self.optimization_recommendations.get("summary_suggestion") or {}
+        if (ss.get("recommended_action") or "skip").lower() in ("add", "replace"):
+            total_recommendations += 1
+            if self.user_feedback.get("summary_suggestion"):
+                feedback_received += 1
         
         return {
             "total_recommendations": total_recommendations,

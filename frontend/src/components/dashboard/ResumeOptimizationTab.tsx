@@ -1,26 +1,8 @@
 import { useState, useMemo } from 'react';
-import { CheckCircle, ChevronDown, ChevronUp, Check, X, FileText, Target, Lightbulb, Star, TrendingUp, Edit3, Download, Loader2, Sparkles } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronUp, Check, X, FileText, Target, Lightbulb, Star, TrendingUp, Edit3, Loader2, Sparkles } from 'lucide-react';
 import { resumeAPI } from '../../services/api';
 import { useAppStore } from '../../store/useAppStore';
 import { getUiStrings } from '../../i18n/uiStrings';
-
-/** Levenshtein distance for original vs suggested bullet text. */
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[] = Array.from({ length: n + 1 }, (_, j) => j);
-  for (let i = 1; i <= m; i++) {
-    let prev = dp[0];
-    dp[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const tmp = dp[j];
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
-      prev = tmp;
-    }
-  }
-  return dp[n];
-}
 
 type JdTriLevel = 'High' | 'Medium' | 'Low';
 
@@ -53,14 +35,50 @@ function ExperienceJdImportanceBadge({
   );
 }
 
-/** If edit distance / len(original) >= 0.5 → rewrite, else tighten. */
-function bulletEditKind(original: string, suggested: string): 'rewrite' | 'tighten' {
-  const o = (original || '').trim();
-  const s = (suggested || '').trim();
-  if (!o) return 'rewrite';
-  const dist = levenshtein(o, s);
-  const denom = Math.max(o.length, 1);
-  return dist / denom >= 0.5 ? 'rewrite' : 'tighten';
+const SUMMARY_ITEM_ID = 'summary_suggestion';
+
+function ReasonStructDisplay({
+  suggestion,
+  ui,
+}: {
+  suggestion: any;
+  ui: ReturnType<typeof getUiStrings>;
+}) {
+  const rs = suggestion?.reason_struct;
+  const hasStruct =
+    rs &&
+    typeof rs === 'object' &&
+    (rs.align || rs.rewrite || rs.evidence || rs.expected_impact);
+  if (hasStruct) {
+    const rows: { key: keyof typeof rs; label: string }[] = [
+      { key: 'align', label: ui.resume.reasonAlign },
+      { key: 'rewrite', label: ui.resume.reasonRewrite },
+      { key: 'evidence', label: ui.resume.reasonEvidence },
+      { key: 'expected_impact', label: ui.resume.reasonImpact },
+    ];
+    return (
+      <div className="px-3 py-2.5 bg-amber-50/60 space-y-2">
+        {rows.map(({ key, label }) => {
+          const val = typeof rs[key] === 'string' ? rs[key].trim() : '';
+          if (!val) return null;
+          return (
+            <div key={String(key)}>
+              <p className="text-xs font-semibold text-amber-950">{label}</p>
+              <p className="text-sm text-gray-800 leading-relaxed mt-0.5">{val}</p>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  if (suggestion?.reason && String(suggestion.reason).trim()) {
+    return (
+      <div className="px-3 py-2.5 bg-amber-50/60">
+        <p className="text-sm text-gray-800 leading-relaxed">{suggestion.reason}</p>
+      </div>
+    );
+  }
+  return null;
 }
 
 interface Props {
@@ -68,9 +86,6 @@ interface Props {
   data: any;
   onFeedbackUpdate: () => void;
   feedbackStatus: any;
-  onExportResume?: (format: 'pdf' | 'docx') => void;
-  exportingResumeFormat?: 'pdf' | 'docx' | null;
-  hasFinalResume?: boolean;
   onConfirmModifications?: (feedbackMap: Record<string, { action: string; text?: string }>) => void;
   generatingResume?: boolean;
   preparingInterview?: boolean;
@@ -84,9 +99,6 @@ interface Props {
 
 export default function ResumeOptimizationTab({
   workflowId, data, onFeedbackUpdate,
-  onExportResume,
-  exportingResumeFormat,
-  hasFinalResume,
   onConfirmModifications, generatingResume, preparingInterview, generatedResume,
   confirmedModifications,
   userFeedback, setUserFeedback,
@@ -129,6 +141,7 @@ export default function ResumeOptimizationTab({
         item_id: itemId,
         feedback,
         modified_text: modifiedText,
+        workflow_id: workflowId || undefined,
       });
       setUserFeedback((prev) => ({ ...prev, [itemId]: feedback }));
       onFeedbackUpdate();
@@ -171,15 +184,27 @@ export default function ResumeOptimizationTab({
   const experienceOptimizations = data?.experience_optimizations || [];
   const formatAdjustments = data?.format_content_adjustments || [];
   const bulletSuggestions = data?.bullet_level_suggestions || [];
+  const tailorStrategy = data?.tailor_strategy;
+  const resumeDiagnosis = data?.resume_diagnosis;
+  const summarySuggestion = data?.summary_suggestion;
+  const showSummarySuggestion = useMemo(() => {
+    const action = (summarySuggestion?.recommended_action || 'skip').toLowerCase();
+    return action === 'add' || action === 'replace';
+  }, [summarySuggestion]);
   const filteredBulletSuggestions = useMemo(() => {
-    return bulletSuggestions.map((group: any) => ({
-      ...group,
-      suggestions: (group.suggestions || []).filter((s: any) => {
-        const suggested = s.suggested_bullet;
-        if (!suggested || suggested === 'N/A' || suggested.trim() === '') return false;
-        return true;
-      }),
-    })).filter((group: any) => group.suggestions.length > 0);
+    return bulletSuggestions
+      .map((group: any, gi: number) => ({
+        ...group,
+        // Keep original backend indices so bls_{gi}_{si} matches resume_optimization_service
+        suggestions: (group.suggestions || [])
+          .map((s: any, si: number) => ({ ...s, _gi: gi, _si: si }))
+          .filter((s: any) => {
+            const suggested = s.suggested_bullet;
+            if (!suggested || suggested === 'N/A' || suggested.trim() === '') return false;
+            return true;
+          }),
+      }))
+      .filter((group: any) => group.suggestions.length > 0);
   }, [bulletSuggestions]);
 
   const bulletSuggestionCount = useMemo(
@@ -193,16 +218,19 @@ export default function ResumeOptimizationTab({
 
   const allBulletItemIds = useMemo(() => {
     const ids: string[] = [];
-    filteredBulletSuggestions.forEach((group: any, gi: number) => {
-      (group.suggestions || []).forEach((_: any, si: number) => {
-        ids.push(`bls_${gi}_${si}`);
+    filteredBulletSuggestions.forEach((group: any) => {
+      (group.suggestions || []).forEach((s: any) => {
+        ids.push(`bls_${s._gi}_${s._si}`);
       });
     });
     return ids;
   }, [filteredBulletSuggestions]);
 
-  const totalFeedbackRequired = allBulletItemIds.length;
-  const feedbackCompleted = allBulletItemIds.filter((id) => userFeedback[id]).length;
+  const totalFeedbackRequired =
+    allBulletItemIds.length + (showSummarySuggestion ? 1 : 0);
+  const feedbackCompleted =
+    allBulletItemIds.filter((id) => userFeedback[id]).length +
+    (showSummarySuggestion && userFeedback[SUMMARY_ITEM_ID] ? 1 : 0);
   const allFeedbackDone = totalFeedbackRequired > 0 && feedbackCompleted === totalFeedbackRequired;
 
   const handleConfirmModifications = () => {
@@ -213,6 +241,16 @@ export default function ResumeOptimizationTab({
     if (!onConfirmModifications) return;
 
     const feedbackMap: Record<string, { action: string; text?: string }> = {};
+    if (showSummarySuggestion && userFeedback[SUMMARY_ITEM_ID]) {
+      const fb = userFeedback[SUMMARY_ITEM_ID];
+      if (fb === 'accept') {
+        feedbackMap[SUMMARY_ITEM_ID] = { action: 'accept' };
+      } else if (fb === 'edited') {
+        feedbackMap[SUMMARY_ITEM_ID] = { action: 'edited', text: editedTexts[SUMMARY_ITEM_ID] };
+      } else {
+        feedbackMap[SUMMARY_ITEM_ID] = { action: 'reject' };
+      }
+    }
     allBulletItemIds.forEach((id) => {
       const fb = userFeedback[id];
       if (fb === 'accept') {
@@ -281,6 +319,174 @@ export default function ResumeOptimizationTab({
               ? ui.resume.progressHintDone
               : ui.resume.progressHintPending(totalFeedbackRequired - feedbackCompleted)}
           </p>
+        </div>
+      )}
+
+      {/* Summary — strategy, optional summary */}
+      {(tailorStrategy || resumeDiagnosis || showSummarySuggestion) && (
+        <div className="card bg-blue-50 border-blue-200 space-y-4">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-blue-600" />
+            {ui.resume.summaryTitle}
+          </h3>
+
+          {tailorStrategy && (
+            <div className="bg-white rounded-lg border border-blue-100 p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-gray-900">{ui.resume.strategyTitle}</h4>
+              {tailorStrategy.core_narrative_one_liner && (
+                <p className="text-sm text-gray-800 leading-relaxed">
+                  <span className="font-medium text-gray-600">{ui.resume.strategyNarrative}: </span>
+                  {tailorStrategy.core_narrative_one_liner}
+                </p>
+              )}
+              {Array.isArray(tailorStrategy.top_3_jd_keywords) && tailorStrategy.top_3_jd_keywords.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-1">{ui.resume.strategyKeywords}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tailorStrategy.top_3_jd_keywords.map((kw: string, i: number) => (
+                      <span key={i} className="px-2 py-1 bg-blue-100 text-blue-900 rounded text-xs">{kw}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                {Array.isArray(tailorStrategy.sections_to_emphasize) && tailorStrategy.sections_to_emphasize.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-emerald-700 mb-1">{ui.resume.strategyEmphasize}</p>
+                    <ul className="list-disc list-inside text-gray-700 space-y-0.5">
+                      {tailorStrategy.sections_to_emphasize.map((s: string, i: number) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {Array.isArray(tailorStrategy.sections_to_compress_or_remove) && tailorStrategy.sections_to_compress_or_remove.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-amber-800 mb-1">{ui.resume.strategyCompress}</p>
+                    <ul className="list-disc list-inside text-gray-700 space-y-0.5">
+                      {tailorStrategy.sections_to_compress_or_remove.map((s: string, i: number) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              {tailorStrategy.match_too_low_warning && (
+                <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded p-2">
+                  {ui.resume.strategyLowMatch}: {tailorStrategy.match_too_low_warning}
+                </p>
+              )}
+            </div>
+          )}
+
+          {resumeDiagnosis?.issues?.length > 0 && (
+            <div className="bg-white rounded-lg border border-blue-100 p-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">{ui.resume.diagnosisTitle}</h4>
+              <ul className="space-y-2">
+                {resumeDiagnosis.issues.map((issue: any, i: number) => (
+                  <li key={i} className="text-sm border-l-2 border-blue-200 pl-2">
+                    <span className={`text-xs font-medium mr-2 ${
+                      issue.severity === 'high' ? 'text-red-700' : issue.severity === 'medium' ? 'text-amber-700' : 'text-gray-500'
+                    }`}>
+                      {issue.severity === 'high' ? ui.resume.severityHigh : issue.severity === 'medium' ? ui.resume.severityMed : ui.resume.severityLow}
+                    </span>
+                    {issue.issue}
+                    {issue.fix_hint && <span className="text-gray-500"> — {issue.fix_hint}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {showSummarySuggestion && (
+            <div className="bg-white rounded-lg border border-indigo-200 p-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">{ui.resume.optionalSummaryTitle}</h4>
+              {summarySuggestion?.original_summary && (
+                <div className="mb-3 p-3 bg-gray-50 rounded border border-gray-200">
+                  <p className="text-xs font-medium text-gray-600 mb-1">{ui.resume.original}:</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{summarySuggestion.original_summary}</p>
+                </div>
+              )}
+              <div className="mb-3">
+                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {editedTexts[SUMMARY_ITEM_ID] ?? summarySuggestion?.suggested_summary ?? ''}
+                </p>
+              </div>
+              {editingItem === SUMMARY_ITEM_ID && (
+                <textarea
+                  className="w-full border border-blue-300 rounded-lg p-3 text-sm mb-3"
+                  rows={4}
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  autoFocus
+                />
+              )}
+              {!userFeedback[SUMMARY_ITEM_ID] ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleFeedback('summary_suggestion', SUMMARY_ITEM_ID, 'accept')}
+                    disabled={submitting === SUMMARY_ITEM_ID}
+                    className="btn btn-primary flex items-center gap-2 text-sm"
+                  >
+                    <Check className="w-4 h-4" />{ui.resume.accept}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingItem(SUMMARY_ITEM_ID);
+                      setEditDraft(editedTexts[SUMMARY_ITEM_ID] ?? summarySuggestion?.suggested_summary ?? '');
+                    }}
+                    className="btn btn-outline flex items-center gap-2 text-sm"
+                  >
+                    <Edit3 className="w-4 h-4" />{ui.resume.edit}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserFeedback((prev) => ({ ...prev, [SUMMARY_ITEM_ID]: 'reject' }));
+                    }}
+                    className="btn btn-outline flex items-center gap-2 text-sm"
+                  >
+                    <X className="w-4 h-4" />{ui.resume.reject}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    userFeedback[SUMMARY_ITEM_ID] === 'accept' ? 'bg-green-100 text-green-800' :
+                    userFeedback[SUMMARY_ITEM_ID] === 'edited' ? 'bg-blue-100 text-blue-800' :
+                    'bg-gray-200 text-gray-600'
+                  }`}>
+                    {userFeedback[SUMMARY_ITEM_ID] === 'accept' ? ui.resume.statusAccepted :
+                     userFeedback[SUMMARY_ITEM_ID] === 'edited' ? ui.resume.statusEdited : ui.resume.statusRejected}
+                  </span>
+                  {editingItem === SUMMARY_ITEM_ID && (
+                    <button
+                      onClick={() => {
+                        if (editDraft.trim()) {
+                          setEditedTexts((prev) => ({ ...prev, [SUMMARY_ITEM_ID]: editDraft.trim() }));
+                          setUserFeedback((prev) => ({ ...prev, [SUMMARY_ITEM_ID]: 'edited' }));
+                        }
+                        setEditingItem(null);
+                        setEditDraft('');
+                      }}
+                      className="btn btn-primary text-sm"
+                    >
+                      {ui.resume.ok}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setUserFeedback((prev) => { const n = { ...prev }; delete n[SUMMARY_ITEM_ID]; return n; });
+                      setEditedTexts((prev) => { const n = { ...prev }; delete n[SUMMARY_ITEM_ID]; return n; });
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline"
+                  >
+                    {ui.resume.undo}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
 
@@ -652,11 +858,11 @@ export default function ResumeOptimizationTab({
           </div>
           <div className="space-y-6">
             {filteredBulletSuggestions.map((group: any, gi: number) => {
-              const gid = `bls_${gi}`;
+              const gid = `bls_group_${group.suggestions?.[0]?._gi ?? gi}`;
               const isOpen = expandedItems.has(gid);
               const suggestions = group.suggestions || [];
               return (
-                <div key={gi} className="card border-l-4 border-blue-500">
+                <div key={gid} className="card border-l-4 border-blue-500">
                   <div className="flex items-start justify-between mb-2">
                     <div className="min-w-0 pr-2">
                       <div className="flex flex-wrap items-center gap-2 gap-y-1">
@@ -667,12 +873,6 @@ export default function ResumeOptimizationTab({
                         />
                       </div>
                       <p className="text-sm text-gray-500 mt-0.5">{ui.resume.suggestionsCount(suggestions.length)}</p>
-                      {typeof group.experience_importance_rationale === 'string' &&
-                        group.experience_importance_rationale.trim() && (
-                          <p className="text-sm text-gray-600 mt-2 leading-relaxed border-l-2 border-blue-200 pl-2">
-                            {group.experience_importance_rationale.trim()}
-                          </p>
-                        )}
                     </div>
                     <button onClick={() => toggleExpand(gid)} className="text-primary-600 hover:text-primary-700">
                       {isOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -680,32 +880,26 @@ export default function ResumeOptimizationTab({
                   </div>
                   {isOpen && (
                     <div className="space-y-4 pt-4 border-t border-gray-200">
-                      {suggestions.map((s: any, si: number) => {
-                        const itemId = `bls_${gi}_${si}`;
+                      {suggestions.map((s: any) => {
+                        const itemId = `bls_${s._gi}_${s._si}`;
                         const fb = userFeedback[itemId];
                         const isEditing = editingItem === itemId;
                         const finalText = editedTexts[itemId];
                         const displaySuggested = finalText ?? s.suggested_bullet ?? 'N/A';
-                        const editKind = bulletEditKind(s.original_bullet || '', displaySuggested);
 
                         return (
-                          <div key={si} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                            <div className="flex flex-wrap items-center gap-2 mb-3">
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                editKind === 'rewrite'
-                                  ? 'bg-amber-100 text-amber-900'
-                                  : 'bg-slate-100 text-slate-800'
-                              }`}>{editKind === 'rewrite' ? ui.resume.editKindRewrite : ui.resume.editKindTighten}</span>
-                              {fb && (
-                                <span className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${
+                          <div key={itemId} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                            {fb && (
+                              <div className="flex flex-wrap items-center gap-2 mb-3">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                                   fb === 'accept' ? 'bg-green-100 text-green-800' :
                                   fb === 'edited' ? 'bg-blue-100 text-blue-800' :
                                   'bg-gray-200 text-gray-600'
                                 }`}>
                                   {fb === 'accept' ? ui.resume.statusAccepted : fb === 'edited' ? ui.resume.statusEdited : ui.resume.statusRejected}
                                 </span>
-                              )}
-                            </div>
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                               <div className={`p-3 rounded border ${fb === 'reject' ? 'bg-white border-gray-300 ring-2 ring-blue-200' : 'bg-white border-gray-300'}`}>
@@ -810,30 +1004,19 @@ export default function ResumeOptimizationTab({
                             )}
 
                             {(() => {
-                              const anchorText =
-                                typeof s.jd_requirement_anchor === 'string'
-                                  ? s.jd_requirement_anchor.trim()
-                                  : '';
                               const kwList = Array.isArray(s.jd_keywords_added) ? s.jd_keywords_added : [];
                               const hasKw = kwList.length > 0;
-                              const hasReason = Boolean(s.reason && String(s.reason).trim());
-                              const showJdBlock = !isEditing && (anchorText || hasReason || hasKw);
-                              if (!showJdBlock) return null;
+                              const rs = s.reason_struct;
+                              const hasReason = Boolean(
+                                (s.reason && String(s.reason).trim()) ||
+                                (rs && typeof rs === 'object' && (rs.align || rs.rewrite || rs.evidence || rs.expected_impact))
+                              );
+                              if (isEditing || (!hasReason && !hasKw)) return null;
                               return (
                                 <div className="mt-3 rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
-                                  {anchorText ? (
-                                    <div className="px-3 py-2.5 bg-blue-50/95 border-b border-blue-100">
-                                      <p className="text-xs font-semibold text-blue-950 tracking-wide">
-                                        {ui.resume.jdAnchorLabel}
-                                      </p>
-                                      <p className="text-sm text-gray-900 leading-relaxed mt-1.5">{anchorText}</p>
-                                    </div>
-                                  ) : null}
                                   {hasReason ? (
-                                    <div
-                                      className={`px-3 py-2.5 bg-amber-50/60${hasKw ? ' border-b border-slate-200/80' : ''}`}
-                                    >
-                                      <p className="text-sm text-gray-800 leading-relaxed">{s.reason}</p>
+                                    <div className={hasKw ? 'border-b border-slate-200/80' : ''}>
+                                      <ReasonStructDisplay suggestion={s} ui={ui} />
                                     </div>
                                   ) : null}
                                   {hasKw ? (
@@ -865,44 +1048,6 @@ export default function ResumeOptimizationTab({
         </div>
       )}
 
-      {/* Summary — without 高优先级修改 */}
-      {data?.optimization_summary && (
-        <div className="card bg-blue-50 border-blue-200">
-          <h3 className="font-semibold text-gray-900 mb-3">{ui.resume.summaryTitle}</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm mb-3">
-            <div>
-              <span className="text-gray-600">{ui.resume.analyzedExp}</span>
-              <span className="font-semibold ml-2">{data.optimization_summary.total_experiences_analyzed || 0}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">{ui.resume.suggestedCount}</span>
-              <span className="font-semibold ml-2">
-                {data.optimization_summary.total_bullet_suggestions || data.optimization_summary.total_adjustments_suggested || 0}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-600">{ui.resume.rewrites}</span>
-              <span className="font-semibold ml-2">{data.optimization_summary.total_experiences_rewritten || data.optimization_summary.total_experiences_optimized || 0}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">{ui.resume.expectedLift}</span>
-              <span className="font-semibold ml-2">
-                {data.optimization_summary.expected_match_score_improvement || 'N/A'}
-              </span>
-            </div>
-          </div>
-          {data.optimization_summary.key_improvements && (
-            <p className="text-sm text-gray-700 bg-white p-3 rounded-lg border border-gray-200">
-              {typeof data.optimization_summary.key_improvements === 'string'
-                ? data.optimization_summary.key_improvements
-                : Array.isArray(data.optimization_summary.key_improvements)
-                  ? data.optimization_summary.key_improvements.join('; ')
-                  : ''}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Revised Resume Preview */}
       {(generatedResume || data?.revised_resume_full) && (
         <div className="card bg-green-50 border-green-200">
@@ -918,44 +1063,6 @@ export default function ResumeOptimizationTab({
           <pre className="text-sm text-gray-800 whitespace-pre-wrap bg-white p-4 rounded-lg border border-gray-200 max-h-[500px] overflow-y-auto leading-relaxed">
             {generatedResume || data.revised_resume_full}
           </pre>
-        </div>
-      )}
-
-      {/* Download Section — only after confirmation, resume only */}
-      {confirmedModifications && hasFinalResume && onExportResume && (
-        <div className="card bg-gradient-to-r from-indigo-50 to-blue-50 border-indigo-200">
-          <div className="flex items-center gap-2 mb-3">
-            <Download className="w-5 h-5 text-indigo-600" />
-            <h3 className="text-lg font-semibold text-gray-900">{ui.resume.exportTitle}</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={!!exportingResumeFormat}
-              onClick={() => onExportResume('pdf')}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-60 disabled:cursor-wait"
-            >
-              {exportingResumeFormat === 'pdf' ? (
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-              ) : (
-                <Download className="w-4 h-4 shrink-0" />
-              )}
-              {exportingResumeFormat === 'pdf' ? ui.resume.exportPreparing : ui.resume.exportPdf}
-            </button>
-            <button
-              type="button"
-              disabled={!!exportingResumeFormat}
-              onClick={() => onExportResume('docx')}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-60 disabled:cursor-wait"
-            >
-              {exportingResumeFormat === 'docx' ? (
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-              ) : (
-                <Download className="w-4 h-4 shrink-0" />
-              )}
-              {exportingResumeFormat === 'docx' ? ui.resume.exportPreparing : ui.resume.exportDocx}
-            </button>
-          </div>
         </div>
       )}
 

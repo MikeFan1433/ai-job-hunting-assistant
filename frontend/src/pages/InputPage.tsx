@@ -69,6 +69,7 @@ export default function InputPage() {
         country_or_region: inputs.country_or_region?.trim() || undefined,
         jd_text: inputs.jd_text,
         resume_text: inputs.resume_text,
+        resume_pdf_upload_id: inputs.resume_pdf_upload_id,
         projects_text: inputs.projects_text?.trim() ? inputs.projects_text.trim().slice(0, 1000) : undefined,
         preferred_lang: inputs.preferred_lang,
       });
@@ -124,7 +125,10 @@ export default function InputPage() {
     try {
       const result = await resumeAPI.uploadPDF(file);
       if (result.extracted_text) {
-        setInputs({ resume_text: result.extracted_text });
+        setInputs({
+          resume_text: result.extracted_text,
+          resume_pdf_upload_id: result.upload_id || undefined,
+        });
       } else {
         setError(ui.input.errPdfExtract);
       }

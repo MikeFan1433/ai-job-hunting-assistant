@@ -33,6 +33,18 @@ const api = axios.create({
   timeout: 30000, // 30 seconds
 });
 
+/** Extract backend error detail from axios error (string or FastAPI validation array). */
+export function extractApiErrorMessage(error: unknown, fallback = 'Request failed'): string {
+  const err = error as { response?: { data?: { detail?: unknown } }; message?: string };
+  const detail = err.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg: string }).msg) : String(d))).join('; ');
+  }
+  if (detail && typeof detail === 'object') return JSON.stringify(detail);
+  return err.message || fallback;
+}
+
 // Health check API
 export const healthAPI = {
   check: async (): Promise<boolean> => {
@@ -55,15 +67,23 @@ export const resumeAPI = {
     });
     return response.data;
   },
-  getRecommendations: async () => {
-    const response = await api.get('/api/v1/resume/recommendations');
+  getRecommendations: async (workflowId?: string | null) => {
+    const params = workflowId ? { workflow_id: workflowId } : undefined;
+    const response = await api.get('/api/v1/resume/recommendations', { params });
     return response.data;
   },
   getFeedbackStatus: async () => {
     const response = await api.get('/api/v1/resume/feedback/status');
     return response.data;
   },
-  submitFeedback: async (feedback: any) => {
+  submitFeedback: async (feedback: {
+    feedback_type: string;
+    item_id: string;
+    feedback: string;
+    modified_text?: string;
+    additional_notes?: string;
+    workflow_id?: string | null;
+  }) => {
     const response = await api.post('/api/v1/resume/feedback', feedback);
     return response.data;
   },
@@ -76,20 +96,37 @@ export const resumeAPI = {
     const response = await api.post('/api/v1/resume/regenerate-suggestion', params);
     return response.data;
   },
-  submitBatchFeedback: async (feedbacks: any[]) => {
-    const response = await api.post('/api/v1/resume/feedback/batch', { feedbacks });
+  submitBatchFeedback: async (feedbacks: any[], workflowId?: string | null) => {
+    const response = await api.post('/api/v1/resume/feedback/batch', {
+      feedbacks,
+      workflow_id: workflowId || undefined,
+    });
     return response.data;
   },
-  generateFinal: async () => {
-    const response = await api.post('/api/v1/resume/generate', undefined, { timeout: 180000 });
+  generateFinal: async (workflowId?: string | null) => {
+    const response = await api.post(
+      '/api/v1/resume/generate',
+      { workflow_id: workflowId || undefined },
+      { timeout: 180000 },
+    );
     return response.data;
   },
-  export: async (format: 'pdf' | 'docx', title: string) => {
+  export: async (format: 'pdf' | 'docx', title: string, workflowId?: string | null) => {
     try {
-      const response = await api.post('/api/v1/resume/export', { format, title }, {
+      // #region agent log
+      fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'api.ts:export',message:'resume export request',data:{format,title,workflowId:workflowId||null},timestamp:Date.now(),hypothesisId:'PDF-FE'})}).catch(()=>{});
+      // #endregion
+      const response = await api.post('/api/v1/resume/export', {
+        format,
+        title,
+        workflow_id: workflowId || undefined,
+      }, {
         responseType: 'blob',
         timeout: 120000,
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7589/ingest/6c0eeebb-9460-4871-89ae-8e5257503ace',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e8b8c3'},body:JSON.stringify({sessionId:'e8b8c3',location:'api.ts:export',message:'resume export response',data:{blobSize:response.data?.size||0,contentType:response.headers?.['content-type']||null},timestamp:Date.now(),hypothesisId:'PDF-FE'})}).catch(()=>{});
+      // #endregion
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -181,6 +218,7 @@ export const workflowAPI = {
     country_or_region?: string;
     jd_text: string;
     resume_text: string;
+    resume_pdf_upload_id?: string;
     projects_text?: string;
     preferred_lang?: 'en' | 'zh';
   }) => {
@@ -194,6 +232,7 @@ export const workflowAPI = {
         country_or_region: inputs.country_or_region || undefined,
         jd_text: inputs.jd_text,
         resume_text: inputs.resume_text,
+        resume_pdf_upload_id: inputs.resume_pdf_upload_id || undefined,
         projects_text: inputs.projects_text || undefined,
         preferred_lang: inputs.preferred_lang || 'en',
       },
