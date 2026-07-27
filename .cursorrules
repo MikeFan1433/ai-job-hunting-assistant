@@ -1,5 +1,12 @@
 # AI Job Hunting Assistant — Cursor lessons
 
+## GitHub push vs commit date (2026-07)
+
+- `git status` “up to date with origin/main” means local and remote share the same commit SHA — the push already succeeded.
+- GitHub Commits page shows **author/committer date**, not push date. Uploading an older local commit tonight still lists that commit under its original date (e.g. Jul 12).
+- If the user wants a **today-dated** GitHub entry, create a new commit (or annotated tag/release) and push — do not expect push alone to change commit dates.
+- HTTPS push needs a PAT or `gh auth`; empty working tree = nothing new to commit even if file mtimes look newer.
+
 ## PDF resume export layout (2026-07)
 
 - Google Docs uploaded PDFs use subset TimesNewRoman fonts. Re-using those embedded font buffers via `insert_textbox` / `TextWriter` injects NBSP (`\xa0`) and soft hyphens (`\xad`) into output text.
